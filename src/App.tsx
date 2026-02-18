@@ -18,14 +18,25 @@ function App() {
   const [paid, setPaid] = useState(false)
   const [saving, setSaving] = useState(false)
   const [sharing, setSharing] = useState(false)
+  const [showDemoBanner, setShowDemoBanner] = useState(() => {
+    return !sessionStorage.getItem('demo-banner-dismissed')
+  })
   const fileInputRef = useRef<HTMLInputElement>(null)
   const checkoutRef = useRef<Awaited<ReturnType<typeof PolarEmbedCheckout.create>> | null>(null)
   const reportRef = useRef<HTMLDivElement>(null)
+  const allowCloseRef = useRef(false)
+  const closeBtnRef = useRef<HTMLButtonElement | null>(null)
+
+  const dismissDemoBanner = () => {
+    setShowDemoBanner(false)
+    sessionStorage.setItem('demo-banner-dismissed', '1')
+  }
 
   // Cleanup checkout on unmount
   useEffect(() => {
     return () => {
       if (checkoutRef.current) {
+        allowCloseRef.current = true
         checkoutRef.current.close()
       }
     }
@@ -115,10 +126,55 @@ function App() {
       })
 
       checkoutRef.current = checkout
+      allowCloseRef.current = false
+
+      // Add custom close button on top of the Polar overlay
+      const closeBtn = document.createElement('button')
+      closeBtn.innerHTML = '<span class="material-icons" style="font-size:28px">close</span>'
+      closeBtn.setAttribute('aria-label', 'Close checkout')
+      Object.assign(closeBtn.style, {
+        position: 'fixed',
+        top: '16px',
+        right: '16px',
+        zIndex: '2147483647',
+        background: 'rgba(255,255,255,0.15)',
+        backdropFilter: 'blur(8px)',
+        border: '1px solid rgba(255,255,255,0.2)',
+        borderRadius: '50%',
+        width: '44px',
+        height: '44px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        color: '#fff',
+        cursor: 'pointer',
+        padding: '0',
+        transition: 'background 0.2s',
+      })
+      closeBtn.onmouseenter = () => { closeBtn.style.background = 'rgba(255,255,255,0.25)' }
+      closeBtn.onmouseleave = () => { closeBtn.style.background = 'rgba(255,255,255,0.15)' }
+      closeBtn.onclick = () => {
+        allowCloseRef.current = true
+        checkoutRef.current?.close()
+      }
+      document.body.appendChild(closeBtn)
+      closeBtnRef.current = closeBtn
+
+      // Escape key handler
+      const handleEscape = (e: KeyboardEvent) => {
+        if (e.key === 'Escape' && checkoutRef.current) {
+          allowCloseRef.current = true
+          checkoutRef.current.close()
+        }
+      }
+      document.addEventListener('keydown', handleEscape)
 
       // 3. Handle success — start analysis
       checkout.addEventListener('success', (event: Event) => {
         event.preventDefault()
+        closeBtnRef.current?.remove()
+        closeBtnRef.current = null
+        document.removeEventListener('keydown', handleEscape)
         checkoutRef.current = null
         setPaid(true)
 
@@ -127,7 +183,15 @@ function App() {
         runAnalysis()
       })
 
-      checkout.addEventListener('close', () => {
+      // Prevent close on backdrop click — only allow when explicitly triggered
+      checkout.addEventListener('close', (event: Event) => {
+        if (!allowCloseRef.current) {
+          event.preventDefault()
+          return
+        }
+        closeBtnRef.current?.remove()
+        closeBtnRef.current = null
+        document.removeEventListener('keydown', handleEscape)
         checkoutRef.current = null
       })
     } catch (err) {
@@ -238,6 +302,22 @@ function App() {
   if (page === 'home') {
     return (
       <div className="app-shell">
+        {/* Demo Banner */}
+        {showDemoBanner && (
+          <div className="demo-banner">
+            <div className="demo-banner-content">
+              <span className="material-icons demo-banner-icon">info</span>
+              <div className="demo-banner-text">
+                <strong>포트폴리오 데모 사이트</strong>
+                <p>실제 결제가 되지 않습니다. 체험 시 카드번호 <span className="demo-card-number">4242 4242 4242 4242</span>를 입력해 주세요.</p>
+              </div>
+              <button className="demo-banner-close" onClick={dismissDemoBanner} aria-label="닫기">
+                <span className="material-icons">close</span>
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Header */}
         <header className="nav-header glass-nav">
           <div className="nav-logo">
