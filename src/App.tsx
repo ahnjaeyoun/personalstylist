@@ -36,7 +36,7 @@ function App() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [report, setReport] = useState<string | null>(null)
-  const [hairstyleImage, setHairstyleImage] = useState<string | null>(null)
+  const [styleImages, setStyleImages] = useState<string[]>([])
   const [paid, setPaid] = useState(false)
   const [saving, setSaving] = useState(false)
   const [sharing, setSharing] = useState(false)
@@ -140,7 +140,7 @@ function App() {
       }
 
       setReport(data.report)
-      setHairstyleImage(data.hairstyleImage ?? null)
+      setStyleImages(data.styleImages ?? [])
       setPage('report')
     } catch (err) {
       setError(err instanceof Error ? err.message : t.errorUnknown)
@@ -352,7 +352,7 @@ function App() {
 
   const handleReset = () => {
     setReport(null)
-    setHairstyleImage(null)
+    setStyleImages([])
     setError(null)
     setPaid(false)
     setCheckoutId(null)
@@ -361,7 +361,7 @@ function App() {
 
   const handleGoHome = () => {
     setReport(null)
-    setHairstyleImage(null)
+    setStyleImages([])
     setError(null)
     setPhoto(null)
     setHeight('')
@@ -675,14 +675,19 @@ function App() {
                 className="report-content"
                 dangerouslySetInnerHTML={{ __html: renderMarkdown(report) }}
               />
-              {hairstyleImage && (
+              {styleImages.length > 0 && (
                 <div className="hairstyle-section">
                   <h2 className="hairstyle-title">{t.hairstyleTitle}</h2>
-                  <img
-                    className="hairstyle-image"
-                    src={hairstyleImage}
-                    alt={t.hairstyleTitle}
-                  />
+                  <div className="style-images-grid">
+                    {styleImages.map((src, i) => (
+                      <img
+                        key={i}
+                        className="style-image"
+                        src={src}
+                        alt={`${t.hairstyleTitle} ${i + 1}`}
+                      />
+                    ))}
+                  </div>
                 </div>
               )}
             </div>

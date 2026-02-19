@@ -1,4 +1,4 @@
-import { buildAnalysisPrompt, buildUserMessage, buildHairstylePrompt, buildErrorMessages } from './_prompts'
+import { buildAnalysisPrompt, buildUserMessage, buildStyleImagePrompts, buildErrorMessages } from './_prompts'
 import type { Locale } from './_prompts'
 
 interface Env {
@@ -247,7 +247,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
     const prompt = buildAnalysisPrompt(locale, gender, height, weight)
     const userMsg = buildUserMessage(locale, gender, height, weight)
-    const hairstylePrompt = buildHairstylePrompt(locale)
+    const styleImagePrompts = buildStyleImagePrompts()
 
     // ─── Helper: trigger refund on failure ───────────────────────────────────
     const triggerRefund = async (reason: string) => {
@@ -261,26 +261,30 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       }
     }
 
-    // ─── Hairstyle image generation ──────────────────────────────────────────
-    const generateHairstyleImage = async (): Promise<string> => {
-      const base64Match = photo.match(/^data:image\/(.*?);base64,(.*)$/)
-      if (!base64Match) throw new Error('Invalid photo format')
+    // ─── Style image generation ───────────────────────────────────────────────
+    const base64Match = photo.match(/^data:image\/(.*?);base64,(.*)$/)
+    if (!base64Match) {
+      return new Response(
+        JSON.stringify({ error: err.missingFields }),
+        { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      )
+    }
+    const mimeType = base64Match[1]
+    const base64Data = base64Match[2]
+    const binaryString = atob(base64Data)
+    const bytes = new Uint8Array(binaryString.length)
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i)
+    }
+    const photoBlob = new Blob([bytes], { type: `image/${mimeType}` })
+    const photoFilename = `photo.${mimeType === 'jpeg' ? 'jpg' : mimeType}`
 
-      const mimeType = base64Match[1]
-      const base64Data = base64Match[2]
-
-      const binaryString = atob(base64Data)
-      const bytes = new Uint8Array(binaryString.length)
-      for (let i = 0; i < binaryString.length; i++) {
-        bytes[i] = binaryString.charCodeAt(i)
-      }
-      const blob = new Blob([bytes], { type: `image/${mimeType}` })
-
+    const generateOneStyleImage = async (stylePrompt: string): Promise<string> => {
       const formData = new FormData()
-      formData.append('image', blob, `photo.${mimeType === 'jpeg' ? 'jpg' : mimeType}`)
+      formData.append('image', photoBlob, photoFilename)
       formData.append('model', 'gpt-image-1.5')
-      formData.append('prompt', hairstylePrompt)
-      formData.append('size', '1024x1024')
+      formData.append('prompt', stylePrompt)
+      formData.append('size', '1024x1792')
       formData.append('quality', 'auto')
       formData.append('input_fidelity', 'high')
 
@@ -300,6 +304,10 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       if (!b64) throw new Error('No image data returned')
 
       return `data:image/png;base64,${b64}`
+    }
+
+    const generateStyleImages = async (): Promise<string[]> => {
+      return Promise.all(styleImagePrompts.map(generateOneStyleImage))
     }
 
     // ─── Text report generation ───────────────────────────────────────────────
@@ -329,14 +337,14 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       }),
     })
 
-    // ─── Run both in parallel ─────────────────────────────────────────────────
+    // ─── Run all in parallel ──────────────────────────────────────────────────
     let reportResponse: Response
-    let hairstyleImage: string
+    let styleImages: string[]
 
     try {
-      const results = await Promise.all([reportPromise, generateHairstyleImage()])
+      const results = await Promise.all([reportPromise, generateStyleImages()])
       reportResponse = results[0]
-      hairstyleImage = results[1]
+      styleImages = results[1]
     } catch (parallelErr) {
       console.error('Analysis generation failed:', parallelErr)
       await triggerRefund(`Analysis generation failed: ${String(parallelErr)}`)
@@ -378,13 +386,13 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     // ─── Send email ───────────────────────────────────────────────────────────
     if (customerEmail && resendKey) {
       // Fire-and-forget: don't block on email sending
-      sendReportEmail(customerEmail, report, hairstyleImage, locale, resendKey).catch(e => {
+      sendReportEmail(customerEmail, report, styleImages[0] ?? null, locale, resendKey).catch(e => {
         console.error('Email send failed:', e)
       })
     }
 
     return new Response(
-      JSON.stringify({ report, hairstyleImage }),
+      JSON.stringify({ report, styleImages }),
       { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
     )
   } catch (unexpectedErr) {

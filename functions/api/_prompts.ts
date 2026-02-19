@@ -73,11 +73,87 @@ export function buildUserMessage(
   return `성별 ${genderLabel}, 키 ${height}, 몸무게 ${weight}`
 }
 
-export function buildHairstylePrompt(locale: Locale): string {
-  if (locale === 'en') {
-    return `Create a 3x3 grid showing 9 different hairstyle variations for this person. Keep the person's face exactly the same in all 9 images. Each cell should show a different trendy hairstyle that would suit this person's face shape and features. Label each style with a short English description. The grid should be clean and well-organized.`
-  }
-  return `Create a 3x3 grid showing 9 different hairstyle variations for this person. Keep the person's face exactly the same in all 9 images. Each cell should show a different trendy hairstyle that would suit this person's face shape and features. Label each style with a short Korean description. The grid should be clean and well-organized.`
+export function buildStyleImagePrompts(): [string, string, string] {
+  return [
+    `You are the best fashion stylist in the world. Create the image with effortless daily styling, clean aesthetics, and refined casual taste.
+
+Full body including shoes fully visible.
+Wide framing.
+Vertical 9:16 aspect ratio (1024x1792).
+
+Using the attached image, create a stylish yet natural daily hairstyle and outfit combination suitable for everyday wear.
+
+Full-length long shot from a distance.
+
+The subject appears smaller within the frame.
+The subject occupies only about 55–60% of the frame height.
+
+Large visible empty space above the head.
+Clearly visible floor extending below the shoes.
+
+The shoes must be completely visible inside the frame.
+The shoes must not touch the bottom edge.
+The head must not touch the top edge.
+
+Centered subject.
+Standing straight.
+Plain clean studio background.
+Full body fashion lookbook photography.
+
+Soft color palette, comfortable silhouette, clean sneakers or loafers, relaxed but polished styling.`,
+
+    `You are the best fashion stylist in the world. Create the image with bold, trendy, street-style fashion sensibility and confident styling.
+
+Full body including shoes fully visible.
+Wide framing.
+Vertical 9:16 aspect ratio (1024x1792).
+
+Using the attached image, create a hip and fashion-forward hairstyle and outfit combination inspired by current street trends.
+
+Full-length long shot from a distance.
+
+The subject appears smaller within the frame.
+The subject occupies only about 55–60% of the frame height.
+
+Large visible empty space above the head.
+Clearly visible floor extending below the shoes.
+
+The shoes must be completely visible inside the frame.
+The shoes must not touch the bottom edge.
+The head must not touch the top edge.
+
+Centered subject.
+Standing straight.
+Plain clean studio background.
+Full body fashion lookbook photography.
+
+Edgy styling, layered outfit, statement sneakers or boots, trend-driven silhouette.`,
+
+    `You are the best fashion stylist in the world. Create the image with expert-level styling, refined taste, and modern fashion sensibility.
+
+Full body including shoes fully visible.
+Wide framing.
+Vertical 9:16 aspect ratio (1024x1792).
+
+Using the attached image, create a modern hairstyle and outfit combination that reflects current fashion trends and professional styling expertise.
+
+Full-length long shot from a distance.
+
+The subject appears smaller within the frame.
+The subject occupies only about 55–60% of the frame height.
+
+Large visible empty space above the head.
+Clearly visible floor extending below the shoes.
+
+The shoes must be completely visible inside the frame.
+The shoes must not touch the bottom edge.
+The head must not touch the top edge.
+
+Centered subject.
+Standing straight.
+Plain clean studio background.
+Full body fashion lookbook photography.`,
+  ]
 }
 
 export function buildErrorMessages(locale: Locale) {

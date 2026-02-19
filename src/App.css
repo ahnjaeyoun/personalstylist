@@ -758,8 +758,16 @@
   margin-bottom: 16px;
 }
 
-.hairstyle-image {
+.style-images-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.style-image {
   width: 100%;
+  aspect-ratio: 9 / 16;
+  object-fit: cover;
   border-radius: 12px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }

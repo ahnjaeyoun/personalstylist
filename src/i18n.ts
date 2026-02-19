@@ -37,8 +37,8 @@ const translations = {
   en: {
     // Demo banner
     demoBannerTitle: 'Portfolio Demo Site',
-    demoBannerText: 'No real charges. Use card number',
-    demoBannerCardSuffix: 'for testing.',
+    demoBannerText: 'No real charges. 3-day free trial — use card number',
+    demoBannerCardSuffix: 'to test.',
     demoBannerClose: 'Close',
 
     // Hero
@@ -85,15 +85,15 @@ const translations = {
     heightPlaceholder: 'e.g. 175',
     weightLabel: 'Weight',
     weightPlaceholder: 'e.g. 68',
-    submitBtn: 'Get Style Analysis After Payment',
+    submitBtn: 'Start Free Trial & Get Style Analysis',
     loadingAnalysis: 'AI is analyzing...',
-    loadingCheckout: 'Preparing payment...',
-    paymentNote: 'Secure payment \u00B7 Processed via Polar',
+    loadingCheckout: 'Preparing subscription...',
+    paymentNote: '3-day free trial \u00B7 Subscription via Polar',
 
     // Report
     reportLabel: 'AI Analysis',
     reportTitle: 'Style Report',
-    hairstyleTitle: 'Recommended Hairstyles',
+    hairstyleTitle: 'AI Style Lookbook',
     saveBtn: 'Save Image',
     savingBtn: 'Saving...',
     shareBtn: 'Share',
@@ -105,7 +105,7 @@ const translations = {
     shareTitle: 'AJY Stylist - My Style Report',
     shareText: 'Check out my AI-generated style report!',
     clipboardCopied: 'Link copied to clipboard!',
-    emailPolicyNote: 'The report will be sent to the email address you enter at checkout. No refunds will be issued for incorrect email addresses.',
+    emailPolicyNote: 'The report will be sent to the email address you enter at checkout. You can cancel your subscription anytime.',
 
     // Auth
     authLabel: 'Account',
@@ -180,8 +180,8 @@ const translations = {
   ko: {
     // Demo banner
     demoBannerTitle: '포트폴리오 데모 사이트',
-    demoBannerText: '실제 결제가 되지 않습니다. 체험 시 카드번호',
-    demoBannerCardSuffix: '를 입력해 주세요.',
+    demoBannerText: '실제 결제 없음. 3일 무료 체험 — 테스트 카드번호',
+    demoBannerCardSuffix: '로 시작해보세요.',
     demoBannerClose: '닫기',
 
     // Hero
@@ -228,15 +228,15 @@ const translations = {
     heightPlaceholder: '예: 175',
     weightLabel: '몸무게',
     weightPlaceholder: '예: 68',
-    submitBtn: '결제 후 스타일 분석 받기',
+    submitBtn: '무료 체험 시작 후 스타일 분석 받기',
     loadingAnalysis: 'AI가 분석 중입니다...',
-    loadingCheckout: '결제 준비 중...',
-    paymentNote: '안전한 결제 · Polar를 통한 보안 처리',
+    loadingCheckout: '구독 준비 중...',
+    paymentNote: '3일 무료 체험 · Polar 구독 결제',
 
     // Report
     reportLabel: 'AI 분석',
     reportTitle: '스타일 리포트',
-    hairstyleTitle: '추천 헤어스타일',
+    hairstyleTitle: 'AI 스타일 룩북',
     saveBtn: '이미지 저장',
     savingBtn: '저장 중...',
     shareBtn: '공유하기',
@@ -248,7 +248,7 @@ const translations = {
     shareTitle: 'AJY Stylist - My Style Report',
     shareText: 'AI가 분석한 나만의 스타일 리포트를 확인해보세요!',
     clipboardCopied: '링크가 클립보드에 복사되었습니다!',
-    emailPolicyNote: '리포트는 결제 시 입력한 이메일 주소로 전송됩니다. 이메일 주소가 잘못된 경우 환불이 제공되지 않습니다.',
+    emailPolicyNote: '리포트는 구독 시 입력한 이메일 주소로 전송됩니다. 구독은 언제든지 취소할 수 있습니다.',
 
     // Auth
     authLabel: '계정',

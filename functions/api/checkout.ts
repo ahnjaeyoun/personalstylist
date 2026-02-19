@@ -41,7 +41,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         Authorization: `Bearer ${accessToken}`,
       },
       body: JSON.stringify({
-        products: ["0ec55ba6-ad1f-4807-a22e-ab661604b5c4"],
+        products: ["147c1b35-42a4-4a5d-82a2-865f282be343"],
         ...(embed_origin ? { embed_origin } : {}),
       }),
     });
