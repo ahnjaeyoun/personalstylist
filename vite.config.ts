@@ -1,6 +1,8 @@
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import type { Plugin } from 'vite'
+import { buildAnalysisPrompt, buildUserMessage, buildHairstylePrompt, buildErrorMessages } from './functions/api/_prompts'
+import type { Locale } from './functions/api/_prompts'
 
 function readBody(req: import('http').IncomingMessage): Promise<string> {
   return new Promise((resolve) => {
@@ -38,12 +40,14 @@ function localApiPlugin(): Plugin {
 
         try {
           const body = await readBody(req)
-          const { embed_origin } = JSON.parse(body)
+          const { embed_origin, locale: rawLocale } = JSON.parse(body)
+          const locale: Locale = rawLocale === 'en' ? 'en' : 'ko'
+          const err = buildErrorMessages(locale)
           const accessToken = process.env.POLAR_ACCESS_TOKEN
 
           if (!accessToken) {
             res.writeHead(500, { 'Content-Type': 'application/json' })
-            res.end(JSON.stringify({ error: '결제 설정이 완료되지 않았습니다.' }))
+            res.end(JSON.stringify({ error: err.checkoutNotConfigured }))
             return
           }
 
@@ -63,17 +67,17 @@ function localApiPlugin(): Plugin {
             const errorData = await response.text()
             console.error('Polar API error:', errorData)
             res.writeHead(502, { 'Content-Type': 'application/json' })
-            res.end(JSON.stringify({ error: '결제 세션 생성에 실패했습니다.' }))
+            res.end(JSON.stringify({ error: err.checkoutFailed }))
             return
           }
 
           const data = await response.json() as { url: string; id: string; client_secret: string }
           res.writeHead(200, { 'Content-Type': 'application/json', ...corsHeaders() })
           res.end(JSON.stringify({ url: data.url, id: data.id, client_secret: data.client_secret }))
-        } catch (err) {
-          console.error('Checkout error:', err)
+        } catch (unexpectedErr) {
+          console.error('Checkout error:', unexpectedErr)
           res.writeHead(500, { 'Content-Type': 'application/json' })
-          res.end(JSON.stringify({ error: '서버 오류가 발생했습니다.' }))
+          res.end(JSON.stringify({ error: 'Server error' }))
         }
       })
 
@@ -93,130 +97,153 @@ function localApiPlugin(): Plugin {
 
         try {
           const body = await readBody(req)
-          const { photo, height, weight, gender } = JSON.parse(body)
+          const { photo, height, weight, gender, locale: rawLocale, checkout_id } = JSON.parse(body)
+          const locale: Locale = rawLocale === 'en' ? 'en' : 'ko'
+          const err = buildErrorMessages(locale)
 
           if (!photo || !height || !weight || !gender) {
             res.writeHead(400, { 'Content-Type': 'application/json' })
-            res.end(JSON.stringify({ error: '모든 필드를 입력해주세요.' }))
+            res.end(JSON.stringify({ error: err.missingFields }))
             return
           }
 
           const apiKey = process.env.OPENAI_API_KEY
           if (!apiKey) {
             res.writeHead(500, { 'Content-Type': 'application/json' })
-            res.end(JSON.stringify({ error: 'API 키가 설정되지 않았습니다.' }))
+            res.end(JSON.stringify({ error: err.noApiKey }))
             return
           }
 
-          const prompt = `당신은 AI 기반 패션 스타일링 소프트웨어입니다. 사용자의 사진과 체형 정보를 분석하여 맞춤 패션 스타일 보고서를 자동 생성해주세요.
+          const polarToken = process.env.POLAR_ACCESS_TOKEN
+          const resendKey = process.env.RESEND_API_KEY
+          const POLAR_API = 'https://sandbox-api.polar.sh'
 
-사용자 정보:
-- 성별: ${gender}
-- 키: ${height}cm
-- 몸무게: ${weight}kg
+          // ─── Fetch checkout session for customer email ───────────────────
+          let customerEmail: string | null = null
+          let checkoutAmount = 0
 
-다음 항목들을 포함한 상세한 패션 스타일 보고서를 작성해주세요:
-
-1. **체형 분석**: 사진과 제공된 정보를 바탕으로 패션 관점에서의 체형 타입을 분석해주세요.
-2. **퍼스널 컬러 추천**: 사진에서 보이는 피부톤을 기반으로 어울리는 의류 컬러를 추천해주세요.
-3. **스타일 추천**: 체형과 분위기에 맞는 옷 스타일을 구체적으로 추천해주세요 (상의, 하의, 아우터, 액세서리 포함).
-4. **피해야 할 스타일**: 체형에 맞지 않아 피하면 좋을 스타일을 알려주세요.
-5. **코디 제안**: 3가지 구체적인 코디 조합을 제안해주세요 (캐주얼, 세미포멀, 포멀).
-6. **쇼핑 팁**: 옷을 구매할 때 참고할 사이즈 및 핏 관련 팁을 알려주세요.
-
-중요 지침:
-- 이 보고서는 순수하게 패션과 의류 스타일링에만 집중하세요.
-- 건강, 다이어트, 체중 감량, 운동, 의학적 조언은 절대 포함하지 마세요.
-- 체형을 부정적으로 평가하거나 체중 변화를 권유하지 마세요.
-- 보고서 마지막에 "본 보고서는 AI가 자동 생성한 패션 참고 자료이며, 전문 스타일리스트의 조언을 대체하지 않습니다."라는 문구를 포함해주세요.
-
-보고서는 친근하면서도 전문적인 톤으로 작성해주세요. 마크다운 형식으로 작성해주세요.`
-
-          const hairstylePrompt = `Create a 3x3 grid showing 9 different hairstyle variations for this person. Keep the person's face exactly the same in all 9 images. Each cell should show a different trendy hairstyle that would suit this person's face shape and features. Label each style with a short Korean description. The grid should be clean and well-organized.`
-
-          // Generate hairstyle image
-          const generateHairstyleImage = async (): Promise<string | null> => {
+          if (checkout_id && polarToken) {
             try {
-              const base64Match = photo.match(/^data:image\/(.*?);base64,(.*)$/)
-              if (!base64Match) return null
-
-              const mimeType = base64Match[1]
-              const base64Data = base64Match[2]
-
-              const binaryString = atob(base64Data)
-              const bytes = new Uint8Array(binaryString.length)
-              for (let i = 0; i < binaryString.length; i++) {
-                bytes[i] = binaryString.charCodeAt(i)
-              }
-              const blob = new Blob([bytes], { type: `image/${mimeType}` })
-
-              const formData = new FormData()
-              formData.append('image', blob, `photo.${mimeType === 'jpeg' ? 'jpg' : mimeType}`)
-              formData.append('model', 'gpt-image-1.5')
-              formData.append('prompt', hairstylePrompt)
-              formData.append('size', '1024x1024')
-              formData.append('quality', 'auto')
-              formData.append('input_fidelity', 'high')
-
-              const imgResponse = await fetch('https://api.openai.com/v1/images/edits', {
-                method: 'POST',
-                headers: { Authorization: `Bearer ${apiKey}` },
-                body: formData,
+              const sessionRes = await fetch(`${POLAR_API}/v1/checkouts/${checkout_id}`, {
+                headers: { Authorization: `Bearer ${polarToken}` },
               })
-
-              if (!imgResponse.ok) {
-                const errText = await imgResponse.text()
-                console.error('Image generation API error:', errText)
-                return null
+              if (sessionRes.ok) {
+                const sessionData = await sessionRes.json() as { customer_email?: string | null; total_amount?: number }
+                customerEmail = sessionData.customer_email ?? null
+                checkoutAmount = sessionData.total_amount ?? 0
+                console.log(`[analyze] customer_email=${customerEmail} amount=${checkoutAmount}`)
               }
-
-              const imgData = await imgResponse.json() as { data: Array<{ b64_json: string }> }
-              const b64 = imgData.data?.[0]?.b64_json
-              if (!b64) return null
-              return `data:image/png;base64,${b64}`
-            } catch (err) {
-              console.error('Hairstyle image generation failed:', err)
-              return null
+            } catch (e) {
+              console.error('Failed to fetch checkout session:', e)
             }
           }
 
-          // Run text report and hairstyle image in parallel
+          // ─── Refund helpers ──────────────────────────────────────────────
+          const findOrderId = async (): Promise<string | null> => {
+            if (!checkout_id || !polarToken) return null
+            for (let attempt = 0; attempt < 4; attempt++) {
+              if (attempt > 0) await new Promise(r => setTimeout(r, 3000 * attempt))
+              try {
+                const r = await fetch(
+                  `${POLAR_API}/v1/orders/?checkout_id=${encodeURIComponent(checkout_id)}&limit=1`,
+                  { headers: { Authorization: `Bearer ${polarToken}` } }
+                )
+                if (!r.ok) continue
+                const d = await r.json() as { items?: Array<{ id: string }> }
+                if (d.items && d.items.length > 0) return d.items[0].id
+              } catch { /* retry */ }
+            }
+            return null
+          }
+
+          const triggerRefund = async (reason: string) => {
+            if (!checkout_id || !polarToken || checkoutAmount <= 0) return
+            const orderId = await findOrderId()
+            if (!orderId) { console.error('Refund: order not found for checkout', checkout_id); return }
+            const r = await fetch(`${POLAR_API}/v1/refunds/`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${polarToken}` },
+              body: JSON.stringify({ order_id: orderId, reason: 'service_disruption', amount: checkoutAmount, comment: reason, revoke_benefits: false }),
+            })
+            console.log(`[refund] order=${orderId} ok=${r.ok} reason=${reason}`)
+          }
+
+          const prompt = buildAnalysisPrompt(locale, gender, height, weight)
+          const userMsg = buildUserMessage(locale, gender, height, weight)
+          const hairstylePrompt = buildHairstylePrompt(locale)
+
+          // ─── Hairstyle image (hard failure) ─────────────────────────────
+          const generateHairstyleImage = async (): Promise<string> => {
+            const base64Match = photo.match(/^data:image\/(.*?);base64,(.*)$/)
+            if (!base64Match) throw new Error('Invalid photo format')
+
+            const mimeType = base64Match[1]
+            const base64Data = base64Match[2]
+            const bytes = Buffer.from(base64Data, 'base64')
+            const blob = new Blob([bytes], { type: `image/${mimeType}` })
+
+            const formData = new FormData()
+            formData.append('image', blob, `photo.${mimeType === 'jpeg' ? 'jpg' : mimeType}`)
+            formData.append('model', 'gpt-image-1.5')
+            formData.append('prompt', hairstylePrompt)
+            formData.append('size', '1024x1024')
+            formData.append('quality', 'auto')
+            formData.append('input_fidelity', 'high')
+
+            const imgResponse = await fetch('https://api.openai.com/v1/images/edits', {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${apiKey}` },
+              body: formData,
+            })
+
+            if (!imgResponse.ok) {
+              const errText = await imgResponse.text()
+              throw new Error(`Image API error: ${errText}`)
+            }
+
+            const imgData = await imgResponse.json() as { data: Array<{ b64_json: string }> }
+            const b64 = imgData.data?.[0]?.b64_json
+            if (!b64) throw new Error('No image data returned')
+            return `data:image/png;base64,${b64}`
+          }
+
+          // ─── Text report ─────────────────────────────────────────────────
           const reportPromise = fetch('https://api.openai.com/v1/responses', {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${apiKey}`,
-            },
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
             body: JSON.stringify({
               model: 'gpt-5-mini',
               input: [
-                {
-                  role: 'developer',
-                  content: [{ type: 'input_text', text: prompt }],
-                },
-                {
-                  role: 'user',
-                  content: [
-                    { type: 'input_text', text: `성별 ${gender}, 키 ${height}, 몸무게 ${weight}` },
-                    { type: 'input_image', image_url: photo },
-                  ],
-                },
+                { role: 'developer', content: [{ type: 'input_text', text: prompt }] },
+                { role: 'user', content: [{ type: 'input_text', text: userMsg }, { type: 'input_image', image_url: photo }] },
               ],
               reasoning: {},
               store: true,
             }),
           })
 
-          const [response, hairstyleImage] = await Promise.all([
-            reportPromise,
-            generateHairstyleImage(),
-          ])
+          // ─── Run in parallel (both must succeed) ─────────────────────────
+          let response: Response
+          let hairstyleImage: string
+
+          try {
+            const results = await Promise.all([reportPromise, generateHairstyleImage()])
+            response = results[0]
+            hairstyleImage = results[1]
+          } catch (parallelErr) {
+            console.error('Parallel generation failed:', parallelErr)
+            await triggerRefund(`Generation failed: ${String(parallelErr)}`)
+            res.writeHead(502, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ error: err.analysisFailed, refunded: true }))
+            return
+          }
 
           if (!response.ok) {
             const errorData = await response.text()
             console.error('OpenAI API error:', errorData)
+            await triggerRefund(`OpenAI error: ${response.status}`)
             res.writeHead(502, { 'Content-Type': 'application/json' })
-            res.end(JSON.stringify({ error: 'AI 분석 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.' }))
+            res.end(JSON.stringify({ error: err.analysisFailed, refunded: true }))
             return
           }
 
@@ -229,17 +256,37 @@ function localApiPlugin(): Plugin {
           const report = textContent?.text
 
           if (!report) {
+            await triggerRefund('Report text extraction failed')
             res.writeHead(500, { 'Content-Type': 'application/json' })
-            res.end(JSON.stringify({ error: '보고서 생성에 실패했습니다.' }))
+            res.end(JSON.stringify({ error: err.reportFailed, refunded: true }))
             return
           }
 
+          // ─── Send email ───────────────────────────────────────────────────
+          if (customerEmail && resendKey) {
+            const subject = locale === 'ko'
+              ? 'AJY Stylist — 나만의 스타일 리포트가 도착했습니다'
+              : 'AJY Stylist — Your Personal Style Report'
+
+            fetch('https://api.resend.com/emails', {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                from: 'AJY Stylist <onboarding@resend.dev>',
+                to: [customerEmail],
+                subject,
+                html: `<p>Your style report is ready. Report text: ${report.substring(0, 100)}...</p>`,
+              }),
+            }).then(r => console.log(`[email] sent to ${customerEmail} ok=${r.ok}`))
+              .catch(e => console.error('[email] send failed:', e))
+          }
+
           res.writeHead(200, { 'Content-Type': 'application/json', ...corsHeaders() })
-          res.end(JSON.stringify({ report, hairstyleImage: hairstyleImage ?? null }))
-        } catch (err) {
-          console.error('Analyze error:', err)
+          res.end(JSON.stringify({ report, hairstyleImage }))
+        } catch (unexpectedErr) {
+          console.error('Analyze error:', unexpectedErr)
           res.writeHead(500, { 'Content-Type': 'application/json' })
-          res.end(JSON.stringify({ error: '서버 오류가 발생했습니다.' }))
+          res.end(JSON.stringify({ error: 'Server error' }))
         }
       })
     },

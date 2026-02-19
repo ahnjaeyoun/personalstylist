@@ -1,16 +1,38 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { PolarEmbedCheckout } from '@polar-sh/checkout/embed'
 import html2canvas from 'html2canvas'
+import { useLocale } from './i18n'
+import { useAuth } from './hooks/useAuth'
+import LoginPage from './pages/LoginPage'
+import SignupPage from './pages/SignupPage'
+import MyPage from './pages/MyPage'
+import ResetPasswordPage from './pages/ResetPasswordPage'
 import './App.css'
 
-type Page = 'home' | 'form' | 'report'
+type Page = 'home' | 'form' | 'report' | 'login' | 'signup' | 'mypage' | 'reset-password'
+
+const FORM_STORAGE_KEY = 'ajy-pending-form'
 
 function App() {
+  const { locale, toggleLocale, t } = useLocale()
+  const {
+    user,
+    isLoggedIn,
+    loading: authLoading,
+    isRecovery,
+    signUpWithEmail,
+    signInWithEmail,
+    signInWithGoogle,
+    signInWithKakao,
+    signOut,
+    resetPasswordForEmail,
+    clearRecovery,
+  } = useAuth()
   const [page, setPage] = useState<Page>('home')
   const [photo, setPhoto] = useState<string | null>(null)
   const [height, setHeight] = useState('')
   const [weight, setWeight] = useState('')
-  const [gender, setGender] = useState<string | null>(null)
+  const [gender, setGender] = useState<'male' | 'female' | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [report, setReport] = useState<string | null>(null)
@@ -18,6 +40,9 @@ function App() {
   const [paid, setPaid] = useState(false)
   const [saving, setSaving] = useState(false)
   const [sharing, setSharing] = useState(false)
+  const [checkoutId, setCheckoutId] = useState<string | null>(null)
+  const [pendingSubmit, setPendingSubmit] = useState(false)
+  const [showAuthRequired, setShowAuthRequired] = useState(false)
   const [showDemoBanner, setShowDemoBanner] = useState(() => {
     return !sessionStorage.getItem('demo-banner-dismissed')
   })
@@ -31,6 +56,38 @@ function App() {
     sessionStorage.setItem('demo-banner-dismissed', '1')
   }
 
+  // Restore form data from sessionStorage after OAuth redirect
+  useEffect(() => {
+    const stored = sessionStorage.getItem(FORM_STORAGE_KEY)
+    if (stored) {
+      try {
+        const data = JSON.parse(stored)
+        if (data.photo) setPhoto(data.photo)
+        if (data.height) setHeight(data.height)
+        if (data.weight) setWeight(data.weight)
+        if (data.gender) setGender(data.gender)
+        if (data.pendingSubmit) setPendingSubmit(true)
+        setPage('form')
+      } catch {
+        // ignore
+      }
+      sessionStorage.removeItem(FORM_STORAGE_KEY)
+    }
+  }, [])
+
+  // Auto-submit after login when pendingSubmit is true
+  useEffect(() => {
+    if (isLoggedIn && pendingSubmit && !authLoading) {
+      setPendingSubmit(false)
+      setShowAuthRequired(false)
+      // Small delay to let state settle
+      setTimeout(() => {
+        handleSubmitAfterAuth()
+      }, 100)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoggedIn, pendingSubmit, authLoading])
+
   // Cleanup checkout on unmount
   useEffect(() => {
     return () => {
@@ -39,6 +96,13 @@ function App() {
       }
     }
   }, [])
+
+  // Navigate to reset-password page when Supabase PASSWORD_RECOVERY event fires
+  useEffect(() => {
+    if (isRecovery) {
+      setPage('reset-password')
+    }
+  }, [isRecovery])
 
   const handlePhotoClick = () => {
     fileInputRef.current?.click()
@@ -66,36 +130,31 @@ function App() {
       const res = await fetch('/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ photo, height, weight, gender }),
+        body: JSON.stringify({ photo, height, weight, gender, locale, checkout_id: checkoutId }),
       })
 
       const data = await res.json()
 
       if (!res.ok) {
-        throw new Error(data.error || '분석 중 오류가 발생했습니다.')
+        throw new Error(data.error || t.errorAnalysis)
       }
 
       setReport(data.report)
       setHairstyleImage(data.hairstyleImage ?? null)
       setPage('report')
     } catch (err) {
-      setError(err instanceof Error ? err.message : '알 수 없는 오류가 발생했습니다.')
+      setError(err instanceof Error ? err.message : t.errorUnknown)
     } finally {
       setLoading(false)
     }
-  }, [photo, height, weight, gender])
+  }, [photo, height, weight, gender, locale, t, checkoutId])
 
-  const handleSubmit = async () => {
+  const startCheckoutFlow = useCallback(async () => {
     if (!photo || !height || !weight || !gender) return
-
-    // If already paid, go straight to analysis
-    if (paid) {
-      runAnalysis()
-      return
-    }
 
     setLoading(true)
     setError(null)
+    setPage('form')
 
     try {
       // 1. Create checkout session
@@ -104,16 +163,18 @@ function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           embed_origin: window.location.origin,
+          locale,
         }),
       })
 
       const checkoutData = await checkoutRes.json()
 
       if (!checkoutRes.ok) {
-        throw new Error(checkoutData.error || '결제 세션 생성에 실패했습니다.')
+        throw new Error(checkoutData.error || t.errorCheckout)
       }
 
       setLoading(false)
+      if (checkoutData.id) setCheckoutId(checkoutData.id)
 
       // 2. Open embedded checkout
       const checkout = await PolarEmbedCheckout.create(checkoutData.url, {
@@ -125,10 +186,10 @@ function App() {
 
       checkoutRef.current = checkout
 
-      // Prevent backdrop click close by setting SDK internal closable to false
+      // Prevent backdrop click close
       ;(checkout as unknown as { closable: boolean }).closable = false
 
-      // Add custom close button on top of the Polar overlay
+      // Add custom close button
       const closeBtn = document.createElement('button')
       closeBtn.innerHTML = '<span class="material-icons" style="font-size:28px">close</span>'
       closeBtn.setAttribute('aria-label', 'Close checkout')
@@ -166,7 +227,6 @@ function App() {
       document.body.appendChild(closeBtn)
       closeBtnRef.current = closeBtn
 
-      // Escape key handler
       const handleEscape = (e: KeyboardEvent) => {
         if (e.key === 'Escape' && checkoutRef.current) {
           cleanup()
@@ -175,13 +235,11 @@ function App() {
       }
       document.addEventListener('keydown', handleEscape)
 
-      // 3. Handle success — start analysis
+      // 3. Handle success
       checkout.addEventListener('success', (event: Event) => {
         event.preventDefault()
         cleanup()
         setPaid(true)
-
-        // Start analysis immediately after payment
         setLoading(true)
         runAnalysis()
       })
@@ -191,8 +249,44 @@ function App() {
       })
     } catch (err) {
       setLoading(false)
-      setError(err instanceof Error ? err.message : '결제 처리 중 오류가 발생했습니다.')
+      setError(err instanceof Error ? err.message : t.errorPayment)
     }
+  }, [photo, height, weight, gender, locale, t, runAnalysis])
+
+  // Called after auth succeeds and pendingSubmit fires
+  const handleSubmitAfterAuth = useCallback(() => {
+    if (!photo || !height || !weight || !gender) return
+    if (paid) {
+      runAnalysis()
+    } else {
+      startCheckoutFlow()
+    }
+  }, [photo, height, weight, gender, paid, runAnalysis, startCheckoutFlow])
+
+  const handleSubmit = async () => {
+    if (!photo || !height || !weight || !gender) return
+
+    // Auth gate: require login before checkout
+    if (!isLoggedIn) {
+      setPendingSubmit(true)
+      setShowAuthRequired(true)
+      setPage('login')
+      return
+    }
+
+    // If already paid, go straight to analysis
+    if (paid) {
+      runAnalysis()
+      return
+    }
+
+    startCheckoutFlow()
+  }
+
+  // Save form data to sessionStorage before OAuth redirect
+  const saveFormBeforeOAuth = () => {
+    const data = { photo, height, weight, gender, pendingSubmit: true }
+    sessionStorage.setItem(FORM_STORAGE_KEY, JSON.stringify(data))
   }
 
   const captureReport = async (): Promise<Blob | null> => {
@@ -233,20 +327,19 @@ function App() {
 
       if (navigator.share && navigator.canShare?.({ files: [file] })) {
         await navigator.share({
-          title: 'AJY Stylist - My Style Report',
-          text: 'AI가 분석한 나만의 스타일 리포트를 확인해보세요!',
+          title: t.shareTitle,
+          text: t.shareText,
           files: [file],
         })
       } else if (navigator.share) {
         await navigator.share({
-          title: 'AJY Stylist - My Style Report',
-          text: 'AI가 분석한 나만의 스타일 리포트를 확인해보세요!',
+          title: t.shareTitle,
+          text: t.shareText,
           url: window.location.href,
         })
       } else {
-        // Fallback: copy URL
         await navigator.clipboard.writeText(window.location.href)
-        alert('링크가 클립보드에 복사되었습니다!')
+        alert(t.clipboardCopied)
       }
     } catch (err) {
       if ((err as Error).name !== 'AbortError') {
@@ -262,6 +355,7 @@ function App() {
     setHairstyleImage(null)
     setError(null)
     setPaid(false)
+    setCheckoutId(null)
     setPage('form')
   }
 
@@ -274,7 +368,15 @@ function App() {
     setWeight('')
     setGender(null)
     setPaid(false)
+    setCheckoutId(null)
+    setPendingSubmit(false)
+    setShowAuthRequired(false)
     setPage('home')
+  }
+
+  const handleSignOut = async () => {
+    await signOut()
+    handleGoHome()
   }
 
   const isFormValid = photo && height && weight && gender
@@ -293,6 +395,81 @@ function App() {
     return `<p>${html}</p>`
   }
 
+  const langToggle = (
+    <button className="lang-switcher" onClick={toggleLocale} aria-label="Toggle language">
+      {locale === 'ko' ? 'EN' : 'KO'}
+    </button>
+  )
+
+  const authHeaderBtn = isLoggedIn ? (
+    <button className="nav-user-btn" onClick={() => setPage('mypage')} title={user?.email ?? t.myPageTitle}>
+      <span className="material-icons">person</span>
+    </button>
+  ) : (
+    <button className="nav-login-btn" onClick={() => setPage('login')}>
+      {t.loginBtn}
+    </button>
+  )
+
+  // ─── RESET PASSWORD ───
+  if (page === 'reset-password') {
+    return (
+      <ResetPasswordPage
+        t={t}
+        langToggle={langToggle}
+        onDone={handleGoHome}
+        onClearRecovery={clearRecovery}
+      />
+    )
+  }
+
+  // ─── MYPAGE ───
+  if (page === 'mypage' && user) {
+    return (
+      <MyPage
+        t={t}
+        langToggle={langToggle}
+        user={user}
+        onGoBack={() => setPage('home')}
+        onSignOut={handleSignOut}
+      />
+    )
+  }
+
+  // ─── LOGIN ───
+  if (page === 'login') {
+    return (
+      <LoginPage
+        t={t}
+        langToggle={langToggle}
+        onLogin={signInWithEmail}
+        onGoogleLogin={signInWithGoogle}
+        onKakaoLogin={signInWithKakao}
+        onGoToSignup={() => setPage('signup')}
+        onGoBack={() => setPage(pendingSubmit ? 'form' : 'home')}
+        showAuthRequired={showAuthRequired}
+        onSaveFormBeforeOAuth={saveFormBeforeOAuth}
+        onResetPassword={resetPasswordForEmail}
+      />
+    )
+  }
+
+  // ─── SIGNUP ───
+  if (page === 'signup') {
+    return (
+      <SignupPage
+        t={t}
+        langToggle={langToggle}
+        onSignup={signUpWithEmail}
+        onGoogleLogin={signInWithGoogle}
+        onKakaoLogin={signInWithKakao}
+        onGoToLogin={() => setPage('login')}
+        onGoBack={() => setPage(pendingSubmit ? 'form' : 'home')}
+        onSaveFormBeforeOAuth={saveFormBeforeOAuth}
+      />
+    )
+  }
+
   // ─── HOME (Landing) ───
   if (page === 'home') {
     return (
@@ -303,10 +480,10 @@ function App() {
             <div className="demo-banner-content">
               <span className="material-icons demo-banner-icon">info</span>
               <div className="demo-banner-text">
-                <strong>포트폴리오 데모 사이트</strong>
-                <p>실제 결제가 되지 않습니다. 체험 시 카드번호 <span className="demo-card-number">4242 4242 4242 4242</span>를 입력해 주세요.</p>
+                <strong>{t.demoBannerTitle}</strong>
+                <p>{t.demoBannerText} <span className="demo-card-number">4242 4242 4242 4242</span>{t.demoBannerCardSuffix}</p>
               </div>
-              <button className="demo-banner-close" onClick={dismissDemoBanner} aria-label="닫기">
+              <button className="demo-banner-close" onClick={dismissDemoBanner} aria-label={t.demoBannerClose}>
                 <span className="material-icons">close</span>
               </button>
             </div>
@@ -318,9 +495,10 @@ function App() {
           <div className="nav-logo">
             AJY <span className="nav-logo-sub">Stylist</span>
           </div>
-          <button className="nav-menu-btn">
-            <span className="material-icons">menu</span>
-          </button>
+          <div className="nav-header-right">
+            {authHeaderBtn}
+            {langToggle}
+          </div>
         </header>
 
         {/* Hero */}
@@ -334,15 +512,15 @@ function App() {
           </div>
           <div className="hero-content">
             <h1 className="hero-title serif-text">
-              Find Your <br />
-              <span className="italic">Perfect Fit</span> <br />
-              with AI.
+              {t.heroTitle1} <br />
+              <span className="italic">{t.heroTitle2}</span> <br />
+              {t.heroTitle3}
             </h1>
             <p className="hero-desc">
-              AI-powered fashion styling software that generates personalized lookbooks based on your measurements and aesthetic preferences.
+              {t.heroDesc}
             </p>
             <button className="hero-btn" onClick={() => setPage('form')}>
-              Get Started
+              {t.heroBtn}
               <span className="material-icons hero-btn-icon">arrow_forward</span>
             </button>
           </div>
@@ -351,8 +529,8 @@ function App() {
         {/* How It Works */}
         <section className="how-section">
           <div className="how-header">
-            <span className="how-label">The Process</span>
-            <h2 className="how-title serif-text">How It Works</h2>
+            <span className="how-label">{t.howLabel}</span>
+            <h2 className="how-title serif-text">{t.howTitle}</h2>
           </div>
           <div className="how-steps">
             <div className="step">
@@ -360,9 +538,9 @@ function App() {
                 <span className="material-icons">straighten</span>
               </div>
               <div>
-                <h3 className="step-title">1. Input Body Data</h3>
+                <h3 className="step-title">{t.step1Title}</h3>
                 <p className="step-desc">
-                  Share your height and weight metrics to help our AI understand your unique silhouette.
+                  {t.step1Desc}
                 </p>
               </div>
             </div>
@@ -371,9 +549,9 @@ function App() {
                 <span className="material-icons">add_a_photo</span>
               </div>
               <div>
-                <h3 className="step-title">2. Upload Photo</h3>
+                <h3 className="step-title">{t.step2Title}</h3>
                 <p className="step-desc">
-                  A simple full-body photo allows the AI to analyze your posture and skin undertones.
+                  {t.step2Desc}
                 </p>
               </div>
             </div>
@@ -382,9 +560,9 @@ function App() {
                 <span className="material-icons">auto_awesome</span>
               </div>
               <div>
-                <h3 className="step-title">3. Receive AI Curation</h3>
+                <h3 className="step-title">{t.step3Title}</h3>
                 <p className="step-desc">
-                  Our software instantly generates a personalized digital lookbook with fashion recommendations matched to you.
+                  {t.step3Desc}
                 </p>
               </div>
             </div>
@@ -394,8 +572,8 @@ function App() {
         {/* Gallery */}
         <section className="gallery-section">
           <div className="gallery-header">
-            <h2 className="gallery-title serif-text">Curated For You</h2>
-            <a className="gallery-link" href="#">View Collection</a>
+            <h2 className="gallery-title serif-text">{t.galleryTitle}</h2>
+            <a className="gallery-link" href="#">{t.galleryLink}</a>
           </div>
           <div className="gallery-grid">
             <div className="gallery-col">
@@ -433,14 +611,14 @@ function App() {
         <footer className="site-footer">
           <p className="footer-brand serif-text">AJY Stylist</p>
           <p className="footer-desc">
-            AI Fashion Styling Software. All style reports are automatically generated by AI and are intended as fashion reference material only. This service does not provide human consulting, medical advice, or health guidance.
+            {t.footerDesc}
           </p>
           <div className="footer-links">
-            <a href="#terms">Terms of Service</a>
+            <a href="#terms">{t.footerTerms}</a>
             <span className="footer-divider">|</span>
-            <a href="#privacy">Privacy Policy</a>
+            <a href="#privacy">{t.footerPrivacy}</a>
           </div>
-          <p className="footer-copy">&copy; 2026 AJY Stylist. All rights reserved.</p>
+          <p className="footer-copy">{t.footerCopy}</p>
         </footer>
 
         {/* Bottom Nav */}
@@ -459,8 +637,8 @@ function App() {
           <button className="bottom-nav-item">
             <span className="material-icons">bookmark_border</span>
           </button>
-          <button className="bottom-nav-item">
-            <span className="material-icons">person_outline</span>
+          <button className="bottom-nav-item" onClick={() => isLoggedIn ? setPage('mypage') : setPage('login')}>
+            <span className="material-icons">{isLoggedIn ? 'person' : 'person_outline'}</span>
           </button>
         </nav>
       </div>
@@ -478,12 +656,15 @@ function App() {
           <div className="nav-logo">
             AJY <span className="nav-logo-sub">Stylist</span>
           </div>
-          <div style={{ width: 40 }} />
+          <div className="nav-header-right">
+            {authHeaderBtn}
+            {langToggle}
+          </div>
         </header>
 
         <div className="page-content">
-          <div className="section-label">AI Analysis</div>
-          <h2 className="page-title serif-text">Style Report</h2>
+          <div className="section-label">{t.reportLabel}</div>
+          <h2 className="page-title serif-text">{t.reportTitle}</h2>
 
           <div className="report-capture" ref={reportRef}>
             <div className="report-capture-header">
@@ -496,11 +677,11 @@ function App() {
               />
               {hairstyleImage && (
                 <div className="hairstyle-section">
-                  <h2 className="hairstyle-title">추천 헤어스타일</h2>
+                  <h2 className="hairstyle-title">{t.hairstyleTitle}</h2>
                   <img
                     className="hairstyle-image"
                     src={hairstyleImage}
-                    alt="추천 헤어스타일"
+                    alt={t.hairstyleTitle}
                   />
                 </div>
               )}
@@ -513,25 +694,25 @@ function App() {
           <div className="report-toolbar">
             <button className="toolbar-btn" onClick={handleSaveImage} disabled={saving}>
               <span className="material-icons">{saving ? 'hourglass_empty' : 'save_alt'}</span>
-              <span>{saving ? '저장 중...' : '이미지 저장'}</span>
+              <span>{saving ? t.savingBtn : t.saveBtn}</span>
             </button>
             <button className="toolbar-btn" onClick={handleShare} disabled={sharing}>
               <span className="material-icons">{sharing ? 'hourglass_empty' : 'share'}</span>
-              <span>{sharing ? '공유 중...' : '공유하기'}</span>
+              <span>{sharing ? t.sharingBtn : t.shareBtn}</span>
             </button>
           </div>
 
           <div className="ai-disclaimer">
             <span className="material-icons disclaimer-icon">info</span>
-            <p>본 보고서는 AI 소프트웨어가 자동 생성한 패션 참고 자료입니다. 전문 스타일리스트의 조언을 대체하지 않으며, 건강 또는 의학적 조언을 포함하지 않습니다.</p>
+            <p>{t.disclaimer}</p>
           </div>
 
           <div className="report-actions">
             <button className="btn-primary" onClick={handleReset}>
-              다시 분석하기
+              {t.retryBtn}
             </button>
             <button className="btn-secondary" onClick={handleGoHome}>
-              홈으로 돌아가기
+              {t.homeBtn}
             </button>
           </div>
         </div>
@@ -549,12 +730,15 @@ function App() {
         <div className="nav-logo">
           AJY <span className="nav-logo-sub">Stylist</span>
         </div>
-        <div style={{ width: 40 }} />
+        <div className="nav-header-right">
+          {authHeaderBtn}
+          {langToggle}
+        </div>
       </header>
 
       <div className="page-content">
-        <div className="section-label">New Analysis</div>
-        <h2 className="page-title serif-text">Your Details</h2>
+        <div className="section-label">{t.formLabel}</div>
+        <h2 className="page-title serif-text">{t.formTitle}</h2>
 
         <div className="form-card">
           {/* Photo Upload */}
@@ -564,11 +748,11 @@ function App() {
               onClick={handlePhotoClick}
             >
               {photo ? (
-                <img src={photo} alt="프로필 사진" />
+                <img src={photo} alt="Profile photo" />
               ) : (
                 <>
                   <span className="material-icons photo-icon-md">add_a_photo</span>
-                  <span className="photo-text">사진 추가</span>
+                  <span className="photo-text">{t.photoText}</span>
                 </>
               )}
             </div>
@@ -579,36 +763,36 @@ function App() {
               onChange={handlePhotoChange}
               style={{ display: 'none' }}
             />
-            <span className="photo-label">본인 전신 사진을 올려주세요</span>
+            <span className="photo-label">{t.photoLabel}</span>
           </div>
 
           {/* Gender */}
           <div className="form-group">
-            <label className="form-label">성별</label>
+            <label className="form-label">{t.genderLabel}</label>
             <div className="gender-group">
               <button
-                className={`gender-btn ${gender === '남성' ? 'active' : ''}`}
-                onClick={() => setGender('남성')}
+                className={`gender-btn ${gender === 'male' ? 'active' : ''}`}
+                onClick={() => setGender('male')}
               >
-                남성
+                {t.genderMale}
               </button>
               <button
-                className={`gender-btn ${gender === '여성' ? 'active' : ''}`}
-                onClick={() => setGender('여성')}
+                className={`gender-btn ${gender === 'female' ? 'active' : ''}`}
+                onClick={() => setGender('female')}
               >
-                여성
+                {t.genderFemale}
               </button>
             </div>
           </div>
 
           {/* Height */}
           <div className="form-group">
-            <label className="form-label">키</label>
+            <label className="form-label">{t.heightLabel}</label>
             <div className="input-wrapper">
               <input
                 type="number"
                 className="form-input"
-                placeholder="예: 175"
+                placeholder={t.heightPlaceholder}
                 value={height}
                 onChange={(e) => setHeight(e.target.value)}
               />
@@ -618,12 +802,12 @@ function App() {
 
           {/* Weight */}
           <div className="form-group">
-            <label className="form-label">몸무게</label>
+            <label className="form-label">{t.weightLabel}</label>
             <div className="input-wrapper">
               <input
                 type="number"
                 className="form-input"
-                placeholder="예: 68"
+                placeholder={t.weightPlaceholder}
                 value={weight}
                 onChange={(e) => setWeight(e.target.value)}
               />
@@ -647,19 +831,24 @@ function App() {
             {loading ? (
               <span className="loading-wrapper">
                 <span className="spinner" />
-                {paid ? 'AI가 분석 중입니다...' : '결제 준비 중...'}
+                {paid ? t.loadingAnalysis : t.loadingCheckout}
               </span>
             ) : (
               <>
                 <span className="material-icons btn-icon">lock</span>
-                결제 후 스타일 분석 받기
+                {t.submitBtn}
               </>
             )}
           </button>
 
           <p className="payment-note">
             <span className="material-icons payment-note-icon">verified</span>
-            안전한 결제 · Polar를 통한 보안 처리
+            {t.paymentNote}
+          </p>
+
+          <p className="email-policy-note">
+            <span className="material-icons email-policy-icon">email</span>
+            {t.emailPolicyNote}
           </p>
         </div>
       </div>

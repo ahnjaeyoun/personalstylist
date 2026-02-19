@@ -1,3 +1,6 @@
+import { buildErrorMessages } from './_prompts'
+import type { Locale } from './_prompts'
+
 interface Env {
   POLAR_ACCESS_TOKEN: string;
 }
@@ -15,17 +18,21 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
   };
 
   try {
+    const { embed_origin, locale: rawLocale } = (await context.request.json()) as {
+      embed_origin?: string;
+      locale?: string;
+    };
+
+    const locale: Locale = rawLocale === 'en' ? 'en' : 'ko'
+    const err = buildErrorMessages(locale)
+
     const accessToken = context.env.POLAR_ACCESS_TOKEN;
     if (!accessToken) {
       return new Response(
-        JSON.stringify({ error: "결제 설정이 완료되지 않았습니다." }),
+        JSON.stringify({ error: err.checkoutNotConfigured }),
         { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
       );
     }
-
-    const { embed_origin } = (await context.request.json()) as {
-      embed_origin?: string;
-    };
 
     const response = await fetch("https://sandbox-api.polar.sh/v1/checkouts/", {
       method: "POST",
@@ -43,7 +50,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       const errorData = await response.text();
       console.error("Polar API error:", errorData);
       return new Response(
-        JSON.stringify({ error: "결제 세션 생성에 실패했습니다." }),
+        JSON.stringify({ error: err.checkoutFailed }),
         { status: 502, headers: { "Content-Type": "application/json", ...corsHeaders } }
       );
     }
@@ -58,10 +65,10 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       }),
       { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
     );
-  } catch (err) {
-    console.error("Checkout error:", err);
+  } catch (unexpectedErr) {
+    console.error("Checkout error:", unexpectedErr);
     return new Response(
-      JSON.stringify({ error: "서버 오류가 발생했습니다." }),
+      JSON.stringify({ error: "Server error" }),
       { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
     );
   }
