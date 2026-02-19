@@ -1,7 +1,7 @@
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import type { Plugin } from 'vite'
-import { buildAnalysisPrompt, buildUserMessage, buildHairstylePrompt, buildErrorMessages } from './functions/api/_prompts'
+import { buildAnalysisPrompt, buildUserMessage, buildStyleImagePrompts, buildErrorMessages } from './functions/api/_prompts'
 import type { Locale } from './functions/api/_prompts'
 
 function readBody(req: import('http').IncomingMessage): Promise<string> {
@@ -58,7 +58,7 @@ function localApiPlugin(): Plugin {
               Authorization: `Bearer ${accessToken}`,
             },
             body: JSON.stringify({
-              products: ['0ec55ba6-ad1f-4807-a22e-ab661604b5c4'],
+              products: ['147c1b35-42a4-4a5d-82a2-865f282be343'],
               ...(embed_origin ? { embed_origin } : {}),
             }),
           })
@@ -170,23 +170,26 @@ function localApiPlugin(): Plugin {
 
           const prompt = buildAnalysisPrompt(locale, gender, height, weight)
           const userMsg = buildUserMessage(locale, gender, height, weight)
-          const hairstylePrompt = buildHairstylePrompt(locale)
+          const styleImagePrompts = buildStyleImagePrompts()
 
-          // ─── Hairstyle image (hard failure) ─────────────────────────────
-          const generateHairstyleImage = async (): Promise<string> => {
-            const base64Match = photo.match(/^data:image\/(.*?);base64,(.*)$/)
-            if (!base64Match) throw new Error('Invalid photo format')
+          // ─── Style images (hard failure) ─────────────────────────────────
+          const base64Match = photo.match(/^data:image\/(.*?);base64,(.*)$/)
+          if (!base64Match) {
+            res.writeHead(400, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ error: err.missingFields }))
+            return
+          }
+          const mimeType = base64Match[1]
+          const photoFilename = `photo.${mimeType === 'jpeg' ? 'jpg' : mimeType}`
+          const photoBytes = Buffer.from(base64Match[2], 'base64')
+          const photoBlob = new Blob([photoBytes], { type: `image/${mimeType}` })
 
-            const mimeType = base64Match[1]
-            const base64Data = base64Match[2]
-            const bytes = Buffer.from(base64Data, 'base64')
-            const blob = new Blob([bytes], { type: `image/${mimeType}` })
-
+          const generateOneStyleImage = async (stylePrompt: string): Promise<string> => {
             const formData = new FormData()
-            formData.append('image', blob, `photo.${mimeType === 'jpeg' ? 'jpg' : mimeType}`)
+            formData.append('image', photoBlob, photoFilename)
             formData.append('model', 'gpt-image-1.5')
-            formData.append('prompt', hairstylePrompt)
-            formData.append('size', '1024x1024')
+            formData.append('prompt', stylePrompt)
+            formData.append('size', '1024x1792')
             formData.append('quality', 'auto')
             formData.append('input_fidelity', 'high')
 
@@ -207,6 +210,9 @@ function localApiPlugin(): Plugin {
             return `data:image/png;base64,${b64}`
           }
 
+          const generateStyleImages = (): Promise<string[]> =>
+            Promise.all(styleImagePrompts.map(generateOneStyleImage))
+
           // ─── Text report ─────────────────────────────────────────────────
           const reportPromise = fetch('https://api.openai.com/v1/responses', {
             method: 'POST',
@@ -222,14 +228,14 @@ function localApiPlugin(): Plugin {
             }),
           })
 
-          // ─── Run in parallel (both must succeed) ─────────────────────────
+          // ─── Run in parallel (all must succeed) ──────────────────────────
           let response: Response
-          let hairstyleImage: string
+          let styleImages: string[]
 
           try {
-            const results = await Promise.all([reportPromise, generateHairstyleImage()])
+            const results = await Promise.all([reportPromise, generateStyleImages()])
             response = results[0]
-            hairstyleImage = results[1]
+            styleImages = results[1]
           } catch (parallelErr) {
             console.error('Parallel generation failed:', parallelErr)
             await triggerRefund(`Generation failed: ${String(parallelErr)}`)
@@ -282,7 +288,7 @@ function localApiPlugin(): Plugin {
           }
 
           res.writeHead(200, { 'Content-Type': 'application/json', ...corsHeaders() })
-          res.end(JSON.stringify({ report, hairstyleImage }))
+          res.end(JSON.stringify({ report, styleImages }))
         } catch (unexpectedErr) {
           console.error('Analyze error:', unexpectedErr)
           res.writeHead(500, { 'Content-Type': 'application/json' })
