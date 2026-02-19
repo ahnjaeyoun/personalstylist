@@ -133,13 +133,18 @@ function App() {
         body: JSON.stringify({ photo, height, weight, gender, locale, checkout_id: checkoutId }),
       })
 
-      const data = await res.json()
+      let data: { report?: string; styleImages?: string[]; error?: string }
+      try {
+        data = await res.json()
+      } catch {
+        throw new Error(`${t.errorAnalysis} (HTTP ${res.status})`)
+      }
 
       if (!res.ok) {
         throw new Error(data.error || t.errorAnalysis)
       }
 
-      setReport(data.report)
+      setReport(data.report ?? null)
       setStyleImages(data.styleImages ?? [])
       setPage('report')
     } catch (err) {

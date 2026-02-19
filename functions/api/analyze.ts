@@ -307,7 +307,10 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     }
 
     const generateStyleImages = async (): Promise<string[]> => {
-      return Promise.all(styleImagePrompts.map(generateOneStyleImage))
+      const results = await Promise.allSettled(styleImagePrompts.map(generateOneStyleImage))
+      return results
+        .filter((r): r is PromiseFulfilledResult<string> => r.status === 'fulfilled')
+        .map(r => r.value)
     }
 
     // ─── Text report generation ───────────────────────────────────────────────
@@ -339,7 +342,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
     // ─── Run all in parallel ──────────────────────────────────────────────────
     let reportResponse: Response
-    let styleImages: string[]
+    let styleImages: string[] = []
 
     try {
       const results = await Promise.all([reportPromise, generateStyleImages()])

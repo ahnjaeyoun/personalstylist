@@ -210,8 +210,12 @@ function localApiPlugin(): Plugin {
             return `data:image/png;base64,${b64}`
           }
 
-          const generateStyleImages = (): Promise<string[]> =>
-            Promise.all(styleImagePrompts.map(generateOneStyleImage))
+          const generateStyleImages = async (): Promise<string[]> => {
+            const results = await Promise.allSettled(styleImagePrompts.map(generateOneStyleImage))
+            return results
+              .filter((r): r is PromiseFulfilledResult<string> => r.status === 'fulfilled')
+              .map(r => r.value)
+          }
 
           // ─── Text report ─────────────────────────────────────────────────
           const reportPromise = fetch('https://api.openai.com/v1/responses', {
@@ -228,9 +232,9 @@ function localApiPlugin(): Plugin {
             }),
           })
 
-          // ─── Run in parallel (all must succeed) ──────────────────────────
+          // ─── Run in parallel ──────────────────────────────────────────────
           let response: Response
-          let styleImages: string[]
+          let styleImages: string[] = []
 
           try {
             const results = await Promise.all([reportPromise, generateStyleImages()])
