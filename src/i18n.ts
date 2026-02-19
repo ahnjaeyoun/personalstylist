@@ -86,9 +86,13 @@ const translations = {
     weightLabel: 'Weight',
     weightPlaceholder: 'e.g. 68',
     submitBtn: 'Start Free Trial & Get Style Analysis',
+    getReportBtn: 'Get Style Report',
     loadingAnalysis: 'AI is analyzing...',
     loadingCheckout: 'Preparing subscription...',
+    loadingSubscriptionCheck: 'Checking subscription...',
     paymentNote: '3-day free trial \u00B7 Subscription via Polar',
+    subscriptionActive: 'Active Subscription',
+    loginRequiredMsg: 'Please log in to get your style report.',
 
     // Report
     reportLabel: 'AI Analysis',
@@ -229,9 +233,13 @@ const translations = {
     weightLabel: '몸무게',
     weightPlaceholder: '예: 68',
     submitBtn: '무료 체험 시작 후 스타일 분석 받기',
+    getReportBtn: '스타일 리포트 받기',
     loadingAnalysis: 'AI가 분석 중입니다...',
     loadingCheckout: '구독 준비 중...',
+    loadingSubscriptionCheck: '구독 확인 중...',
     paymentNote: '3일 무료 체험 · Polar 구독 결제',
+    subscriptionActive: '구독 활성 중',
+    loginRequiredMsg: '스타일 리포트를 받으려면 로그인해주세요.',
 
     // Report
     reportLabel: 'AI 분석',

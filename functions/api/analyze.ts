@@ -203,6 +203,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       gender,
       locale: rawLocale,
       checkout_id,
+      user_email,
     } = (await context.request.json()) as {
       photo: string
       height: string
@@ -210,6 +211,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       gender: string
       locale?: string
       checkout_id?: string
+      user_email?: string
     }
 
     const locale: Locale = rawLocale === 'en' ? 'en' : 'ko'
@@ -243,6 +245,9 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         customerEmail = session.customer_email
         checkoutAmount = session.total_amount
       }
+    } else if (user_email) {
+      // Subscribed user — no checkout, use their account email
+      customerEmail = user_email
     }
 
     const prompt = buildAnalysisPrompt(locale, gender, height, weight)

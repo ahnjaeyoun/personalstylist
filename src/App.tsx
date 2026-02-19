@@ -38,11 +38,14 @@ function App() {
   const [report, setReport] = useState<string | null>(null)
   const [styleImages, setStyleImages] = useState<string[]>([])
   const [paid, setPaid] = useState(false)
+  const [hasSubscription, setHasSubscription] = useState(false)
+  const [subscriptionLoading, setSubscriptionLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [sharing, setSharing] = useState(false)
   const [checkoutId, setCheckoutId] = useState<string | null>(null)
   const [pendingSubmit, setPendingSubmit] = useState(false)
   const [showAuthRequired, setShowAuthRequired] = useState(false)
+  const [showLoginRequired, setShowLoginRequired] = useState(false)
   const [showDemoBanner, setShowDemoBanner] = useState(() => {
     return !sessionStorage.getItem('demo-banner-dismissed')
   })
@@ -55,6 +58,30 @@ function App() {
     setShowDemoBanner(false)
     sessionStorage.setItem('demo-banner-dismissed', '1')
   }
+
+  // Check Polar subscription status for logged-in user
+  const checkUserSubscription = useCallback(async (email: string): Promise<boolean> => {
+    try {
+      const res = await fetch(`/api/subscription?email=${encodeURIComponent(email)}`)
+      if (!res.ok) return false
+      const data = await res.json()
+      return data.hasActiveSubscription ?? false
+    } catch {
+      return false
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!isLoggedIn || !user?.email) {
+      setHasSubscription(false)
+      setSubscriptionLoading(false)
+      return
+    }
+    setSubscriptionLoading(true)
+    checkUserSubscription(user.email)
+      .then(isSubscribed => setHasSubscription(isSubscribed))
+      .finally(() => setSubscriptionLoading(false))
+  }, [isLoggedIn, user?.email, checkUserSubscription])
 
   // Restore form data from sessionStorage after OAuth redirect
   useEffect(() => {
@@ -78,12 +105,27 @@ function App() {
   // Auto-submit after login when pendingSubmit is true
   useEffect(() => {
     if (isLoggedIn && pendingSubmit && !authLoading) {
-      setPendingSubmit(false)
-      setShowAuthRequired(false)
-      // Small delay to let state settle
-      setTimeout(() => {
-        handleSubmitAfterAuth()
-      }, 100)
+      const doAutoSubmit = async () => {
+        setPendingSubmit(false)
+        setShowAuthRequired(false)
+        setShowLoginRequired(false)
+
+        // Check subscription fresh (don't rely on state race)
+        let isSubscribed = false
+        if (user?.email) {
+          isSubscribed = await checkUserSubscription(user.email)
+          setHasSubscription(isSubscribed)
+          setSubscriptionLoading(false)
+        }
+
+        if (paid || isSubscribed) {
+          runAnalysis()
+        } else {
+          startCheckoutFlow()
+        }
+      }
+
+      setTimeout(doAutoSubmit, 100)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoggedIn, pendingSubmit, authLoading])
@@ -130,7 +172,11 @@ function App() {
       const res = await fetch('/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ photo, height, weight, gender, locale, checkout_id: checkoutId }),
+        body: JSON.stringify({
+          photo, height, weight, gender, locale,
+          checkout_id: checkoutId,
+          user_email: user?.email ?? undefined,
+        }),
       })
 
       let data: { report?: string; styleImages?: string[]; error?: string }
@@ -152,7 +198,7 @@ function App() {
     } finally {
       setLoading(false)
     }
-  }, [photo, height, weight, gender, locale, t, checkoutId])
+  }, [photo, height, weight, gender, locale, t, checkoutId, user])
 
   const startCheckoutFlow = useCallback(async () => {
     if (!photo || !height || !weight || !gender) return
@@ -258,29 +304,30 @@ function App() {
     }
   }, [photo, height, weight, gender, locale, t, runAnalysis])
 
-  // Called after auth succeeds and pendingSubmit fires
+  // Called after auth succeeds and pendingSubmit fires (only used as fallback)
   const handleSubmitAfterAuth = useCallback(() => {
     if (!photo || !height || !weight || !gender) return
-    if (paid) {
+    if (paid || hasSubscription) {
       runAnalysis()
     } else {
       startCheckoutFlow()
     }
-  }, [photo, height, weight, gender, paid, runAnalysis, startCheckoutFlow])
+  }, [photo, height, weight, gender, paid, hasSubscription, runAnalysis, startCheckoutFlow])
 
   const handleSubmit = async () => {
     if (!photo || !height || !weight || !gender) return
 
-    // Auth gate: require login before checkout
+    // Auth gate: show inline prompt when not logged in
     if (!isLoggedIn) {
+      setShowLoginRequired(true)
       setPendingSubmit(true)
-      setShowAuthRequired(true)
-      setPage('login')
       return
     }
 
-    // If already paid, go straight to analysis
-    if (paid) {
+    setShowLoginRequired(false)
+
+    // If subscribed or already paid this session, go straight to analysis
+    if (paid || hasSubscription) {
       runAnalysis()
       return
     }
@@ -361,6 +408,7 @@ function App() {
     setError(null)
     setPaid(false)
     setCheckoutId(null)
+    setShowLoginRequired(false)
     setPage('form')
   }
 
@@ -376,6 +424,7 @@ function App() {
     setCheckoutId(null)
     setPendingSubmit(false)
     setShowAuthRequired(false)
+    setShowLoginRequired(false)
     setPage('home')
   }
 
@@ -832,29 +881,62 @@ function App() {
             </div>
           )}
 
+          {/* Login required inline message */}
+          {showLoginRequired && !isLoggedIn && (
+            <div className="auth-info">
+              <span className="material-icons">info</span>
+              <div style={{ flex: 1 }}>
+                <p style={{ margin: '0 0 8px' }}>{t.loginRequiredMsg}</p>
+                <button
+                  className="btn-primary"
+                  style={{ width: '100%' }}
+                  onClick={() => {
+                    setShowAuthRequired(true)
+                    setPage('login')
+                  }}
+                >
+                  {t.loginBtn}
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Submit */}
           <button
             className="btn-primary"
-            disabled={!isFormValid || loading}
+            disabled={!isFormValid || loading || subscriptionLoading}
             onClick={handleSubmit}
           >
-            {loading ? (
+            {(loading || subscriptionLoading) ? (
               <span className="loading-wrapper">
                 <span className="spinner" />
-                {paid ? t.loadingAnalysis : t.loadingCheckout}
+                {subscriptionLoading
+                  ? t.loadingSubscriptionCheck
+                  : (paid || hasSubscription) ? t.loadingAnalysis : t.loadingCheckout}
               </span>
             ) : (
               <>
-                <span className="material-icons btn-icon">lock</span>
-                {t.submitBtn}
+                <span className="material-icons btn-icon">
+                  {hasSubscription ? 'auto_awesome' : 'lock'}
+                </span>
+                {hasSubscription ? t.getReportBtn : t.submitBtn}
               </>
             )}
           </button>
 
-          <p className="payment-note">
-            <span className="material-icons payment-note-icon">verified</span>
-            {t.paymentNote}
-          </p>
+          {!hasSubscription && (
+            <p className="payment-note">
+              <span className="material-icons payment-note-icon">verified</span>
+              {t.paymentNote}
+            </p>
+          )}
+
+          {hasSubscription && (
+            <p className="payment-note">
+              <span className="material-icons payment-note-icon">check_circle</span>
+              {t.subscriptionActive}
+            </p>
+          )}
 
           <p className="email-policy-note">
             <span className="material-icons email-policy-icon">email</span>

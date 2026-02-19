@@ -12,10 +12,10 @@ function readBody(req: import('http').IncomingMessage): Promise<string> {
   })
 }
 
-function corsHeaders() {
+function corsHeaders(methods = 'POST, OPTIONS') {
   return {
     'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Methods': methods,
     'Access-Control-Allow-Headers': 'Content-Type',
   }
 }
@@ -81,6 +81,60 @@ function localApiPlugin(): Plugin {
         }
       })
 
+      // ─── /api/subscription ───
+      server.middlewares.use('/api/subscription', async (req, res) => {
+        if (req.method === 'OPTIONS') {
+          res.writeHead(204, corsHeaders('GET, OPTIONS'))
+          res.end()
+          return
+        }
+
+        if (req.method !== 'GET') {
+          res.writeHead(405, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ error: 'Method not allowed' }))
+          return
+        }
+
+        const url = new URL(req.url!, `http://${req.headers.host}`)
+        const email = url.searchParams.get('email')
+
+        if (!email) {
+          res.writeHead(400, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ error: 'Email required' }))
+          return
+        }
+
+        const polarToken = process.env.POLAR_ACCESS_TOKEN
+        if (!polarToken) {
+          res.writeHead(200, { 'Content-Type': 'application/json', ...corsHeaders('GET, OPTIONS') })
+          res.end(JSON.stringify({ hasActiveSubscription: false }))
+          return
+        }
+
+        try {
+          const polarRes = await fetch(
+            `https://sandbox-api.polar.sh/v1/subscriptions?customer_email=${encodeURIComponent(email)}&limit=10`,
+            { headers: { Authorization: `Bearer ${polarToken}` } }
+          )
+
+          if (!polarRes.ok) {
+            res.writeHead(200, { 'Content-Type': 'application/json', ...corsHeaders('GET, OPTIONS') })
+            res.end(JSON.stringify({ hasActiveSubscription: false }))
+            return
+          }
+
+          const data = await polarRes.json() as { items?: Array<{ status: string }> }
+          const hasActive = data.items?.some((s: { status: string }) => s.status === 'active' || s.status === 'trialing') ?? false
+
+          res.writeHead(200, { 'Content-Type': 'application/json', ...corsHeaders('GET, OPTIONS') })
+          res.end(JSON.stringify({ hasActiveSubscription: hasActive }))
+        } catch (e) {
+          console.error('Subscription check error:', e)
+          res.writeHead(200, { 'Content-Type': 'application/json', ...corsHeaders('GET, OPTIONS') })
+          res.end(JSON.stringify({ hasActiveSubscription: false }))
+        }
+      })
+
       // ─── /api/analyze ───
       server.middlewares.use('/api/analyze', async (req, res) => {
         if (req.method === 'OPTIONS') {
@@ -97,7 +151,7 @@ function localApiPlugin(): Plugin {
 
         try {
           const body = await readBody(req)
-          const { photo, height, weight, gender, locale: rawLocale, checkout_id } = JSON.parse(body)
+          const { photo, height, weight, gender, locale: rawLocale, checkout_id, user_email } = JSON.parse(body)
           const locale: Locale = rawLocale === 'en' ? 'en' : 'ko'
           const err = buildErrorMessages(locale)
 
@@ -136,6 +190,9 @@ function localApiPlugin(): Plugin {
             } catch (e) {
               console.error('Failed to fetch checkout session:', e)
             }
+          } else if (user_email) {
+            // Subscribed user — no checkout, use their account email
+            customerEmail = user_email
           }
 
           // ─── Refund helpers ──────────────────────────────────────────────
