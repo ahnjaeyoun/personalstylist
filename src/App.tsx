@@ -194,6 +194,7 @@ const runAnalysis = useCallback(async () => {
     setLoading(true)
     setError(null)
     setReport(null)
+    setStyleImage(null)
 
     try {
       const res = await fetch('/api/analyze', {
@@ -206,7 +207,7 @@ const runAnalysis = useCallback(async () => {
         }),
       })
 
-      let data: { report?: string; error?: string }
+      let data: { report?: string; styleImage?: string; error?: string }
       try {
         data = await res.json()
       } catch {
@@ -218,22 +219,25 @@ const runAnalysis = useCallback(async () => {
       }
 
       setReport(data.report ?? null)
-      setStyleImage(null)
-      setStyleImageLoading(true)
-      setPage('report')
-
-      // Generate style image in background (non-blocking)
-      fetch('/api/generate-image', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ photo, gender }),
-      })
-        .then(r => r.json())
-        .then((imgData: { image?: string }) => {
-          if (imgData.image) setStyleImage(imgData.image)
+      if (data.styleImage) {
+        setStyleImage(data.styleImage)
+        setStyleImageLoading(false)
+      } else {
+        // Fallback if analyze didn't return image (e.g. timeout)
+        setStyleImageLoading(true)
+        fetch('/api/generate-image', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ photo, gender }),
         })
-        .catch(err => console.error('Style image generation failed:', err))
-        .finally(() => setStyleImageLoading(false))
+          .then(r => r.json())
+          .then((imgData: { image?: string }) => {
+            if (imgData.image) setStyleImage(imgData.image)
+          })
+          .catch(err => console.error('Style image fallback failed:', err))
+          .finally(() => setStyleImageLoading(false))
+      }
+      setPage('report')
     } catch (err) {
       setError(err instanceof Error ? err.message : t.errorUnknown)
     } finally {

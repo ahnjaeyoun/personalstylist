@@ -20,7 +20,61 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type",
 }
 
-// ─── Polar helpers ───────────────────────────────────────────────────────────
+const STYLE_PROMPT = `You are the best fashion stylist in the world.
+
+Using the attached image, create a single composite image containing three separate vertical panels arranged in a 1×3 horizontal grid (side-by-side).
+
+IMPORTANT STRUCTURE:
+Each panel must behave like its own independent vertical 9:16 frame.
+The three panels are placed next to each other inside one wide canvas.
+No panel may be cropped on the left or right edges.
+
+Left panel: Effortless Daily Styling  
+Center panel: Clean Modern Styling  
+Right panel: Hip / Trendy Contemporary Styling  
+
+STRICT FRAMING RULES FOR EACH PANEL:
+
+Full body including shoes fully visible.
+Wide framing.
+Vertical 9:16 composition inside each panel.
+
+Full-length long shot from a distance.
+The subject appears smaller within the panel.
+The subject occupies only about 50–55% of the panel height.
+
+Large visible empty space above the head.
+Clearly visible floor extending below the shoes.
+
+The shoes must be completely visible inside the frame.
+The shoes must NOT touch the bottom edge.
+The head must NOT touch the top edge.
+
+CRITICAL:
+Generous empty space must also exist on BOTH left and right sides of the subject inside each panel.
+The subject must not touch or approach the side edges.
+
+Centered subject in each panel.
+Standing straight.
+Plain clean studio background.
+Soft natural lighting.
+Balanced negative space.
+High-end editorial lookbook photography.
+No cropping.
+No edge clipping.`
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+async function base64ToBlob(base64: string): Promise<Blob> {
+  const [header, data] = base64.split(',')
+  const mime = header.match(/:(.*?);/)?.[1] || 'image/jpeg'
+  const binary = atob(data)
+  const array = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) {
+    array[i] = binary.charCodeAt(i)
+  }
+  return new Blob([array], { type: mime })
+}
 
 async function getCheckoutSession(
   checkoutId: string,
@@ -109,12 +163,19 @@ function renderMarkdownToHtml(text: string): string {
     .replace(/\n/g, '<br/>')
 }
 
-function buildEmailHtml(report: string, locale: Locale): string {
+function buildEmailHtml(report: string, locale: Locale, styleImage?: string): string {
   const reportHtml = renderMarkdownToHtml(report)
   const disclaimer = locale === 'ko'
     ? '본 보고서는 AI 소프트웨어가 자동 생성한 패션 참고 자료입니다. 전문 스타일리스트의 조언을 대체하지 않습니다.'
     : 'This report is AI-generated fashion reference material. It does not replace professional stylist advice.'
   const footer = locale === 'ko' ? 'AI 패션 스타일링 by AJY Stylist' : 'AI Fashion Styling by AJY Stylist'
+
+  const imageHtml = styleImage
+    ? `<div style="margin: 2em 0; text-align: center;">
+         <p style="margin: 0 0 1em; font-size: 0.8rem; letter-spacing: 0.12em; text-transform: uppercase; color: #7a6f8a;">${locale === 'ko' ? 'AI 스타일 제안' : 'AI Style Suggestion'}</p>
+         <img src="${styleImage}" alt="AI Style" style="width: 100%; max-width: 520px; border-radius: 12px; border: 1px solid rgba(201,185,154,0.2);" />
+       </div>`
+    : ''
 
   return `<!DOCTYPE html>
 <html lang="${locale}">
@@ -133,6 +194,7 @@ function buildEmailHtml(report: string, locale: Locale): string {
           <td style="background:#131022;padding:36px 40px;">
             <p style="margin:0 0 1em;font-size:0.8rem;letter-spacing:0.12em;text-transform:uppercase;color:#7a6f8a;">${locale === 'ko' ? 'AI 분석 리포트' : 'AI Analysis Report'}</p>
             <div style="font-size:0.9em;line-height:1.8;color:#c9b99a;"><p style="margin:0 0 0.75em 0;">${reportHtml}</p></div>
+            ${imageHtml}
             <div style="margin-top:2em;padding:16px 20px;background:rgba(255,255,255,0.04);border-radius:8px;border-left:3px solid rgba(201,185,154,0.4);">
               <p style="margin:0;font-size:0.78rem;color:#7a6f8a;line-height:1.6;">${disclaimer}</p>
             </div>
@@ -155,12 +217,13 @@ async function sendReportEmail(
   toEmail: string,
   report: string,
   locale: Locale,
-  resendApiKey: string
+  resendApiKey: string,
+  styleImage?: string
 ): Promise<void> {
   const subject = locale === 'ko'
     ? 'AJY Stylist — 나만의 스타일 리포트가 도착했습니다'
     : 'AJY Stylist — Your Personal Style Report'
-  const html = buildEmailHtml(report, locale)
+  const html = buildEmailHtml(report, locale, styleImage)
 
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
@@ -242,28 +305,14 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     const prompt = buildAnalysisPrompt(locale, gender, height, weight)
     const userMsg = buildUserMessage(locale, gender, height, weight)
 
-    // ─── Helper: trigger refund on failure ───────────────────────────────────
-    // quick=true: try only once (no retries), used when we're near the timeout limit
-    const triggerRefund = async (reason: string, quick = false) => {
-      if (!checkout_id || !polarToken || checkoutAmount <= 0) return
-      const orderId = await findOrderIdByCheckout(checkout_id, polarToken, quick ? 1 : 4)
-      if (orderId) {
-        const ok = await issueRefund(orderId, checkoutAmount, polarToken, reason)
-        console.log(`Refund ${ok ? 'succeeded' : 'failed'} for order ${orderId}`)
-      } else {
-        console.error(`Could not find order for checkout ${checkout_id} to refund`)
-      }
-    }
-
-    // ─── Text report generation only ─────────────────────────────────────────
-    console.log('[Analyze] Starting OpenAI request...')
+    // ─── OpenAI Parallel Requests ───────────────────────────────────────────
+    console.log('[Analyze] Starting OpenAI requests...')
     const controller = new AbortController()
     const abortTimer = setTimeout(() => controller.abort(), 28000)
 
-    let reportResponse: Response
     try {
-      console.log(`[Analyze] Sending request to OpenAI. Image length: ${photo.length}`)
-      reportResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+      // 1. Text Report Generation
+      const textPromise = fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -273,10 +322,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         body: JSON.stringify({
           model: 'gpt-4o-mini',
           messages: [
-            {
-              role: 'system',
-              content: prompt,
-            },
+            { role: 'system', content: prompt },
             {
               role: 'user',
               content: [
@@ -286,59 +332,69 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
             },
           ],
         }),
-      })
+      }).then(r => r.json() as Promise<{ choices: Array<{ message: { content: string } }> }>)
+
+      // 2. Image Generation (OpenAI Image Edits)
+      const imagePromise = (async () => {
+        try {
+          const imageBlob = await base64ToBlob(photo)
+          const formData = new FormData()
+          formData.append('image', imageBlob, 'input.jpg')
+          formData.append('prompt', STYLE_PROMPT)
+          formData.append('model', 'gpt-image-1.5')
+          formData.append('n', '1')
+          formData.append('size', '1024x1024')
+          formData.append('quality', 'auto')
+          formData.append('background', 'auto')
+          formData.append('moderation', 'auto')
+          formData.append('input_fidelity', 'high')
+          formData.append('response_format', 'b64_json')
+
+          const res = await fetch('https://api.openai.com/v1/images/edits', {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${apiKey}` },
+            signal: controller.signal,
+            body: formData,
+          })
+          if (!res.ok) return null
+          const data = await res.json() as { data: Array<{ b64_json?: string; url?: string }> }
+          const imageData = data.data?.[0]
+          return imageData?.b64_json ? `data:image/png;base64,${imageData.b64_json}` : imageData?.url || null
+        } catch (e) {
+          console.error('[Analyze] Image generation error:', e)
+          return null
+        }
+      })()
+
+      // Wait for both (with timeout handled by controller)
+      const [textData, styleImage] = await Promise.all([textPromise, imagePromise])
       clearTimeout(abortTimer)
-    } catch (fetchErr) {
+
+      const report = textData.choices?.[0]?.message?.content
+      if (!report) throw new Error(err.reportFailed)
+
+      // ─── Send email (with image) ──────────────────────────────────────────
+      if (customerEmail && resendKey) {
+        sendReportEmail(customerEmail, report, locale, resendKey, styleImage || undefined).catch(e => {
+          console.error('Email send failed:', e)
+        })
+      }
+
+      return new Response(
+        JSON.stringify({ report, styleImage }),
+        { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      )
+
+    } catch (unexpectedErr) {
       clearTimeout(abortTimer)
-      console.error('[Analyze] OpenAI fetch error:', fetchErr)
-      // quick=true: skip retries to stay within Cloudflare's 30s wall-clock limit
-      // await triggerRefund('OpenAI fetch timeout or error', true)
+      console.error('[Analyze] Error:', unexpectedErr)
       return new Response(
-        JSON.stringify({ error: `Analysis failed: ${(fetchErr as Error).message}`, refunded: !!checkout_id }),
+        JSON.stringify({ error: (unexpectedErr as Error).message || 'Server error' }),
         { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
       )
     }
-
-    if (!reportResponse.ok) {
-      const errorData = await reportResponse.text()
-      console.error('[Analyze] OpenAI API error:', reportResponse.status, errorData)
-      // await triggerRefund(`OpenAI report API error: ${reportResponse.status}`)
-      return new Response(
-        JSON.stringify({ error: `OpenAI API Error: ${reportResponse.status} - ${errorData}`, refunded: true }),
-        { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
-      )
-    }
-
-    const data = await reportResponse.json() as {
-      choices: Array<{
-        message: { content: string }
-      }>
-    }
-
-    const report = data.choices?.[0]?.message?.content
-
-    if (!report) {
-      console.error('[Analyze] Report text extraction failed. Data:', JSON.stringify(data))
-      // await triggerRefund('Report text extraction failed')
-      return new Response(
-        JSON.stringify({ error: err.reportFailed, refunded: true }),
-        { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
-      )
-    }
-
-    // ─── Send email ───────────────────────────────────────────────────────────
-    if (customerEmail && resendKey) {
-      sendReportEmail(customerEmail, report, locale, resendKey).catch(e => {
-        console.error('Email send failed:', e)
-      })
-    }
-
-    return new Response(
-      JSON.stringify({ report }),
-      { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
-    )
   } catch (unexpectedErr) {
-    console.error('Unexpected error:', unexpectedErr)
+    console.error('Unexpected top-level error:', unexpectedErr)
     return new Response(
       JSON.stringify({ error: 'Server error' }),
       { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
