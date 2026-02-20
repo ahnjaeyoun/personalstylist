@@ -226,7 +226,7 @@ const runAnalysis = useCallback(async () => {
       fetch('/api/generate-image', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gender }),
+        body: JSON.stringify({ photo, gender }),
       })
         .then(r => r.json())
         .then((imgData: { image?: string }) => {
@@ -765,30 +765,31 @@ const runAnalysis = useCallback(async () => {
                 dangerouslySetInnerHTML={{ __html: renderMarkdown(report) }}
               />
             </div>
+
+            {(styleImageLoading || styleImage) && (
+              <div className="style-image-section" style={{ padding: '0 24px' }}>
+                <div className="section-label">{locale === 'ko' ? 'AI 스타일 이미지' : 'AI Style Image'}</div>
+                {styleImageLoading && !styleImage ? (
+                  <div className="style-image-loading">
+                    <div className="style-image-skeleton" />
+                    <p className="style-image-loading-text">
+                      {locale === 'ko' ? 'AI 스타일 이미지 생성 중...' : 'Generating AI style image...'}
+                    </p>
+                  </div>
+                ) : styleImage ? (
+                  <img
+                    src={styleImage}
+                    alt={locale === 'ko' ? 'AI 스타일 이미지' : 'AI Style Image'}
+                    className="style-image"
+                  />
+                ) : null}
+              </div>
+            )}
+
             <div className="report-capture-footer">
               <p>AI Fashion Styling by AJY Stylist</p>
             </div>
           </div>
-
-          {(styleImageLoading || styleImage) && (
-            <div className="style-image-section">
-              <div className="section-label">{locale === 'ko' ? 'AI 스타일 이미지' : 'AI Style Image'}</div>
-              {styleImageLoading && !styleImage ? (
-                <div className="style-image-loading">
-                  <div className="style-image-skeleton" />
-                  <p className="style-image-loading-text">
-                    {locale === 'ko' ? 'AI 스타일 이미지 생성 중...' : 'Generating AI style image...'}
-                  </p>
-                </div>
-              ) : styleImage ? (
-                <img
-                  src={styleImage}
-                  alt={locale === 'ko' ? 'AI 스타일 이미지' : 'AI Style Image'}
-                  className="style-image"
-                />
-              ) : null}
-            </div>
-          )}
 
           <div className="report-toolbar">
             <button className="toolbar-btn" onClick={handleSaveImage} disabled={saving}>
