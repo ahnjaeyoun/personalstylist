@@ -244,16 +244,16 @@ function localApiPlugin(): Plugin {
           const userMsg = buildUserMessage(locale, gender, height, weight)
 
           // ─── Text report only ─────────────────────────────────────────────
-          const response = await fetch('https://api.openai.com/v1/responses', {
+          const response = await fetch('https://api.openai.com/v1/chat/completions', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
             body: JSON.stringify({
               model: 'gpt-4o-mini',
-              input: [
-                { role: 'developer', content: [{ type: 'input_text', text: prompt }] },
+              messages: [
+                { role: 'system', content: prompt },
                 { role: 'user', content: [
-                  { type: 'input_text', text: userMsg },
-                  { type: 'input_image', image_url: photo },
+                  { type: 'text', text: userMsg },
+                  { type: 'image_url', image_url: { url: photo } },
                 ]},
               ],
             }),
@@ -269,12 +269,10 @@ function localApiPlugin(): Plugin {
           }
 
           const data = await response.json() as {
-            output: Array<{ type: string; content?: Array<{ type: string; text: string }> }>
+            choices: Array<{ message: { content: string } }>
           }
 
-          const messageOutput = data.output?.find((item: { type: string }) => item.type === 'message')
-          const textContent = messageOutput?.content?.find((c: { type: string }) => c.type === 'output_text')
-          const report = textContent?.text
+          const report = data.choices?.[0]?.message?.content
 
           if (!report) {
             await triggerRefund('Report text extraction failed')
