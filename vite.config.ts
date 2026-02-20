@@ -1,7 +1,7 @@
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import type { Plugin } from 'vite'
-import { buildAnalysisPrompt, buildUserMessage, buildStyleImagePrompts, buildErrorMessages } from './functions/api/_prompts'
+import { buildAnalysisPrompt, buildUserMessage, buildStyleImagePrompt, buildErrorMessages } from './functions/api/_prompts'
 import type { Locale } from './functions/api/_prompts'
 
 function readBody(req: import('http').IncomingMessage): Promise<string> {
@@ -40,7 +40,7 @@ function localApiPlugin(): Plugin {
 
         try {
           const body = await readBody(req)
-          const { embed_origin, locale: rawLocale } = JSON.parse(body)
+          const { embed_origin, locale: rawLocale, customer_email } = JSON.parse(body)
           const locale: Locale = rawLocale === 'en' ? 'en' : 'ko'
           const err = buildErrorMessages(locale)
           const accessToken = process.env.POLAR_ACCESS_TOKEN
@@ -60,6 +60,7 @@ function localApiPlugin(): Plugin {
             body: JSON.stringify({
               products: ['147c1b35-42a4-4a5d-82a2-865f282be343'],
               ...(embed_origin ? { embed_origin } : {}),
+              ...(customer_email ? { customer_email } : {}),
             }),
           })
 
@@ -112,19 +113,33 @@ function localApiPlugin(): Plugin {
         }
 
         try {
-          const polarRes = await fetch(
-            `https://sandbox-api.polar.sh/v1/subscriptions?customer_email=${encodeURIComponent(email)}&limit=10`,
+          // Step 1: Find customer by email
+          const customersRes = await fetch(
+            `https://sandbox-api.polar.sh/v1/customers/?email=${encodeURIComponent(email)}&limit=1`,
             { headers: { Authorization: `Bearer ${polarToken}` } }
           )
 
-          if (!polarRes.ok) {
-            res.writeHead(200, { 'Content-Type': 'application/json', ...corsHeaders('GET, OPTIONS') })
-            res.end(JSON.stringify({ hasActiveSubscription: false }))
-            return
-          }
+          let hasActive = false
 
-          const data = await polarRes.json() as { items?: Array<{ status: string }> }
-          const hasActive = data.items?.some((s: { status: string }) => s.status === 'active' || s.status === 'trialing') ?? false
+          if (customersRes.ok) {
+            const customersData = await customersRes.json() as { items?: Array<{ id: string }> }
+            const customer = customersData.items?.[0]
+
+            if (customer) {
+              // Step 2: Get customer state (includes active_subscriptions)
+              const stateRes = await fetch(
+                `https://sandbox-api.polar.sh/v1/customers/${customer.id}/state`,
+                { headers: { Authorization: `Bearer ${polarToken}` } }
+              )
+
+              if (stateRes.ok) {
+                const state = await stateRes.json() as {
+                  active_subscriptions?: Array<{ status: string }>
+                }
+                hasActive = (state.active_subscriptions?.length ?? 0) > 0
+              }
+            }
+          }
 
           res.writeHead(200, { 'Content-Type': 'application/json', ...corsHeaders('GET, OPTIONS') })
           res.end(JSON.stringify({ hasActiveSubscription: hasActive }))
@@ -227,9 +242,9 @@ function localApiPlugin(): Plugin {
 
           const prompt = buildAnalysisPrompt(locale, gender, height, weight)
           const userMsg = buildUserMessage(locale, gender, height, weight)
-          const styleImagePrompts = buildStyleImagePrompts()
+          const styleImagePrompt = buildStyleImagePrompt(height, weight)
 
-          // ─── Style images (hard failure) ─────────────────────────────────
+          // ─── Style image ──────────────────────────────────────────────────
           const base64Match = photo.match(/^data:image\/(.*?);base64,(.*)$/)
           if (!base64Match) {
             res.writeHead(400, { 'Content-Type': 'application/json' })
@@ -241,37 +256,38 @@ function localApiPlugin(): Plugin {
           const photoBytes = Buffer.from(base64Match[2], 'base64')
           const photoBlob = new Blob([photoBytes], { type: `image/${mimeType}` })
 
-          const generateOneStyleImage = async (stylePrompt: string): Promise<string> => {
-            const formData = new FormData()
-            formData.append('image', photoBlob, photoFilename)
-            formData.append('model', 'gpt-image-1.5')
-            formData.append('prompt', stylePrompt)
-            formData.append('size', '1024x1792')
-            formData.append('quality', 'auto')
-            formData.append('input_fidelity', 'high')
+          const generateStyleImage = async (): Promise<string | null> => {
+            try {
+              const formData = new FormData()
+              formData.append('image', photoBlob, photoFilename)
+              formData.append('model', 'gpt-image-1.5')
+              formData.append('prompt', styleImagePrompt)
+              formData.append('n', '1')
+              formData.append('size', '1024x1024')
+              formData.append('quality', 'auto')
+              formData.append('background', 'auto')
+              formData.append('moderation', 'auto')
+              formData.append('input_fidelity', 'high')
 
-            const imgResponse = await fetch('https://api.openai.com/v1/images/edits', {
-              method: 'POST',
-              headers: { Authorization: `Bearer ${apiKey}` },
-              body: formData,
-            })
+              const imgResponse = await fetch('https://api.openai.com/v1/images/edits', {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${apiKey}` },
+                body: formData,
+              })
 
-            if (!imgResponse.ok) {
-              const errText = await imgResponse.text()
-              throw new Error(`Image API error: ${errText}`)
+              if (!imgResponse.ok) {
+                const errText = await imgResponse.text()
+                throw new Error(`Image API error: ${errText}`)
+              }
+
+              const imgData = await imgResponse.json() as { data: Array<{ b64_json: string }> }
+              const b64 = imgData.data?.[0]?.b64_json
+              if (!b64) throw new Error('No image data returned')
+              return `data:image/png;base64,${b64}`
+            } catch (imgErr) {
+              console.error('Style image generation failed:', imgErr)
+              return null
             }
-
-            const imgData = await imgResponse.json() as { data: Array<{ b64_json: string }> }
-            const b64 = imgData.data?.[0]?.b64_json
-            if (!b64) throw new Error('No image data returned')
-            return `data:image/png;base64,${b64}`
-          }
-
-          const generateStyleImages = async (): Promise<string[]> => {
-            const results = await Promise.allSettled(styleImagePrompts.map(generateOneStyleImage))
-            return results
-              .filter((r): r is PromiseFulfilledResult<string> => r.status === 'fulfilled')
-              .map(r => r.value)
           }
 
           // ─── Text report ─────────────────────────────────────────────────
@@ -291,12 +307,12 @@ function localApiPlugin(): Plugin {
 
           // ─── Run in parallel ──────────────────────────────────────────────
           let response: Response
-          let styleImages: string[] = []
+          let styleImage: string | null = null
 
           try {
-            const results = await Promise.all([reportPromise, generateStyleImages()])
+            const results = await Promise.all([reportPromise, generateStyleImage()])
             response = results[0]
-            styleImages = results[1]
+            styleImage = results[1]
           } catch (parallelErr) {
             console.error('Parallel generation failed:', parallelErr)
             await triggerRefund(`Generation failed: ${String(parallelErr)}`)
@@ -349,7 +365,7 @@ function localApiPlugin(): Plugin {
           }
 
           res.writeHead(200, { 'Content-Type': 'application/json', ...corsHeaders() })
-          res.end(JSON.stringify({ report, styleImages }))
+          res.end(JSON.stringify({ report, styleImage }))
         } catch (unexpectedErr) {
           console.error('Analyze error:', unexpectedErr)
           res.writeHead(500, { 'Content-Type': 'application/json' })

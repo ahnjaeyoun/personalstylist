@@ -15,6 +15,35 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'Content-Type',
 }
 
+async function checkSubscriptionByEmail(email: string, polarToken: string): Promise<boolean> {
+  // Step 1: Find customer by email
+  const customersRes = await fetch(
+    `${POLAR_API}/v1/customers/?email=${encodeURIComponent(email)}&limit=1`,
+    { headers: { Authorization: `Bearer ${polarToken}` } }
+  )
+
+  if (!customersRes.ok) return false
+
+  const customersData = await customersRes.json() as { items?: Array<{ id: string }> }
+  const customer = customersData.items?.[0]
+
+  if (!customer) return false
+
+  // Step 2: Get customer state (includes active_subscriptions)
+  const stateRes = await fetch(
+    `${POLAR_API}/v1/customers/${customer.id}/state`,
+    { headers: { Authorization: `Bearer ${polarToken}` } }
+  )
+
+  if (!stateRes.ok) return false
+
+  const state = await stateRes.json() as {
+    active_subscriptions?: Array<{ status: string }>
+  }
+
+  return (state.active_subscriptions?.length ?? 0) > 0
+}
+
 export const onRequestGet: PagesFunction<Env> = async (context) => {
   const url = new URL(context.request.url)
   const email = url.searchParams.get('email')
@@ -35,20 +64,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
   }
 
   try {
-    const res = await fetch(
-      `${POLAR_API}/v1/subscriptions?customer_email=${encodeURIComponent(email)}&limit=10`,
-      { headers: { Authorization: `Bearer ${polarToken}` } }
-    )
-
-    if (!res.ok) {
-      return new Response(JSON.stringify({ hasActiveSubscription: false }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json', ...corsHeaders },
-      })
-    }
-
-    const data = await res.json() as { items?: Array<{ status: string }> }
-    const hasActive = data.items?.some(s => s.status === 'active' || s.status === 'trialing') ?? false
+    const hasActive = await checkSubscriptionByEmail(email, polarToken)
 
     return new Response(JSON.stringify({ hasActiveSubscription: hasActive }), {
       status: 200,

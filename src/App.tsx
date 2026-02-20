@@ -36,7 +36,7 @@ function App() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [report, setReport] = useState<string | null>(null)
-  const [styleImages, setStyleImages] = useState<string[]>([])
+  const [styleImage, setStyleImage] = useState<string | null>(null)
   const [paid, setPaid] = useState(false)
   const [hasSubscription, setHasSubscription] = useState(false)
   const [subscriptionLoading, setSubscriptionLoading] = useState(false)
@@ -179,7 +179,7 @@ function App() {
         }),
       })
 
-      let data: { report?: string; styleImages?: string[]; error?: string }
+      let data: { report?: string; styleImage?: string | null; error?: string }
       try {
         data = await res.json()
       } catch {
@@ -191,7 +191,7 @@ function App() {
       }
 
       setReport(data.report ?? null)
-      setStyleImages(data.styleImages ?? [])
+      setStyleImage(data.styleImage ?? null)
       setPage('report')
     } catch (err) {
       setError(err instanceof Error ? err.message : t.errorUnknown)
@@ -215,6 +215,7 @@ function App() {
         body: JSON.stringify({
           embed_origin: window.location.origin,
           locale,
+          ...(user?.email ? { customer_email: user.email } : {}),
         }),
       })
 
@@ -729,19 +730,14 @@ function App() {
                 className="report-content"
                 dangerouslySetInnerHTML={{ __html: renderMarkdown(report) }}
               />
-              {styleImages.length > 0 && (
+              {styleImage && (
                 <div className="hairstyle-section">
                   <h2 className="hairstyle-title">{t.hairstyleTitle}</h2>
-                  <div className="style-images-grid">
-                    {styleImages.map((src, i) => (
-                      <img
-                        key={i}
-                        className="style-image"
-                        src={src}
-                        alt={`${t.hairstyleTitle} ${i + 1}`}
-                      />
-                    ))}
-                  </div>
+                  <img
+                    className="style-image"
+                    src={styleImage}
+                    alt={t.hairstyleTitle}
+                  />
                 </div>
               )}
             </div>

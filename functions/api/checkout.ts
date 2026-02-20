@@ -18,9 +18,10 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
   };
 
   try {
-    const { embed_origin, locale: rawLocale } = (await context.request.json()) as {
+    const { embed_origin, locale: rawLocale, customer_email } = (await context.request.json()) as {
       embed_origin?: string;
       locale?: string;
+      customer_email?: string;
     };
 
     const locale: Locale = rawLocale === 'en' ? 'en' : 'ko'
@@ -43,6 +44,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       body: JSON.stringify({
         products: ["147c1b35-42a4-4a5d-82a2-865f282be343"],
         ...(embed_origin ? { embed_origin } : {}),
+        ...(customer_email ? { customer_email } : {}),
       }),
     });
 

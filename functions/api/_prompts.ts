@@ -73,87 +73,55 @@ export function buildUserMessage(
   return `성별 ${genderLabel}, 키 ${height}, 몸무게 ${weight}`
 }
 
-export function buildStyleImagePrompts(): [string, string, string] {
-  return [
-    `You are the best fashion stylist in the world. Create the image with effortless daily styling, clean aesthetics, and refined casual taste.
+export function buildStyleImagePrompt(height: string, weight: string): string {
+  return `You are the best fashion stylist in the world.
+
+Subject information:
+- Height: ${height}cm
+- Weight: ${weight}kg
+
+Using the attached image, create a single composite image containing three separate vertical panels arranged in a 1×3 horizontal grid (side-by-side).
+
+Consider the subject's height (${height}cm) and weight (${weight}kg) when selecting appropriate styles, silhouettes, and proportions for each outfit.
+
+IMPORTANT STRUCTURE:
+Each panel must behave like its own independent vertical 9:16 frame.
+The three panels are placed next to each other inside one wide canvas.
+No panel may be cropped on the left or right edges.
+
+Left panel: Effortless Daily Styling
+Center panel: Clean Modern Styling
+Right panel: Hip / Trendy Contemporary Styling
+
+STRICT FRAMING RULES FOR EACH PANEL:
 
 Full body including shoes fully visible.
 Wide framing.
-Vertical 9:16 aspect ratio (1024x1792).
-
-Using the attached image, create a stylish yet natural daily hairstyle and outfit combination suitable for everyday wear.
+Vertical 9:16 composition inside each panel.
 
 Full-length long shot from a distance.
-
-The subject appears smaller within the frame.
-The subject occupies only about 55–60% of the frame height.
+The subject appears smaller within the panel.
+The subject occupies only about 50–55% of the panel height.
 
 Large visible empty space above the head.
 Clearly visible floor extending below the shoes.
 
 The shoes must be completely visible inside the frame.
-The shoes must not touch the bottom edge.
-The head must not touch the top edge.
+The shoes must NOT touch the bottom edge.
+The head must NOT touch the top edge.
 
-Centered subject.
+CRITICAL:
+Generous empty space must also exist on BOTH left and right sides of the subject inside each panel.
+The subject must not touch or approach the side edges.
+
+Centered subject in each panel.
 Standing straight.
 Plain clean studio background.
-Full body fashion lookbook photography.
-
-Soft color palette, comfortable silhouette, clean sneakers or loafers, relaxed but polished styling.`,
-
-    `You are the best fashion stylist in the world. Create the image with bold, trendy, street-style fashion sensibility and confident styling.
-
-Full body including shoes fully visible.
-Wide framing.
-Vertical 9:16 aspect ratio (1024x1792).
-
-Using the attached image, create a hip and fashion-forward hairstyle and outfit combination inspired by current street trends.
-
-Full-length long shot from a distance.
-
-The subject appears smaller within the frame.
-The subject occupies only about 55–60% of the frame height.
-
-Large visible empty space above the head.
-Clearly visible floor extending below the shoes.
-
-The shoes must be completely visible inside the frame.
-The shoes must not touch the bottom edge.
-The head must not touch the top edge.
-
-Centered subject.
-Standing straight.
-Plain clean studio background.
-Full body fashion lookbook photography.
-
-Edgy styling, layered outfit, statement sneakers or boots, trend-driven silhouette.`,
-
-    `You are the best fashion stylist in the world. Create the image with expert-level styling, refined taste, and modern fashion sensibility.
-
-Full body including shoes fully visible.
-Wide framing.
-Vertical 9:16 aspect ratio (1024x1792).
-
-Using the attached image, create a modern hairstyle and outfit combination that reflects current fashion trends and professional styling expertise.
-
-Full-length long shot from a distance.
-
-The subject appears smaller within the frame.
-The subject occupies only about 55–60% of the frame height.
-
-Large visible empty space above the head.
-Clearly visible floor extending below the shoes.
-
-The shoes must be completely visible inside the frame.
-The shoes must not touch the bottom edge.
-The head must not touch the top edge.
-
-Centered subject.
-Standing straight.
-Plain clean studio background.
-Full body fashion lookbook photography.`,
-  ]
+Soft natural lighting.
+Balanced negative space.
+High-end editorial lookbook photography.
+No cropping.
+No edge clipping.`
 }
 
 export function buildErrorMessages(locale: Locale) {

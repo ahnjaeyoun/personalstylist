@@ -1,4 +1,4 @@
-import { buildAnalysisPrompt, buildUserMessage, buildStyleImagePrompts, buildErrorMessages } from './_prompts'
+import { buildAnalysisPrompt, buildUserMessage, buildStyleImagePrompt, buildErrorMessages } from './_prompts'
 import type { Locale } from './_prompts'
 
 interface Env {
@@ -252,7 +252,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
     const prompt = buildAnalysisPrompt(locale, gender, height, weight)
     const userMsg = buildUserMessage(locale, gender, height, weight)
-    const styleImagePrompts = buildStyleImagePrompts()
+    const styleImagePrompt = buildStyleImagePrompt(height, weight)
 
     // ─── Helper: trigger refund on failure ───────────────────────────────────
     const triggerRefund = async (reason: string) => {
@@ -284,38 +284,39 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     const photoBlob = new Blob([bytes], { type: `image/${mimeType}` })
     const photoFilename = `photo.${mimeType === 'jpeg' ? 'jpg' : mimeType}`
 
-    const generateOneStyleImage = async (stylePrompt: string): Promise<string> => {
-      const formData = new FormData()
-      formData.append('image', photoBlob, photoFilename)
-      formData.append('model', 'gpt-image-1.5')
-      formData.append('prompt', stylePrompt)
-      formData.append('size', '1024x1792')
-      formData.append('quality', 'auto')
-      formData.append('input_fidelity', 'high')
+    const generateStyleImage = async (): Promise<string | null> => {
+      try {
+        const formData = new FormData()
+        formData.append('image', photoBlob, photoFilename)
+        formData.append('model', 'gpt-image-1.5')
+        formData.append('prompt', styleImagePrompt)
+        formData.append('n', '1')
+        formData.append('size', '1024x1024')
+        formData.append('quality', 'auto')
+        formData.append('background', 'auto')
+        formData.append('moderation', 'auto')
+        formData.append('input_fidelity', 'high')
 
-      const imgResponse = await fetch('https://api.openai.com/v1/images/edits', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${apiKey}` },
-        body: formData,
-      })
+        const imgResponse = await fetch('https://api.openai.com/v1/images/edits', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${apiKey}` },
+          body: formData,
+        })
 
-      if (!imgResponse.ok) {
-        const errText = await imgResponse.text()
-        throw new Error(`Image generation API error: ${errText}`)
+        if (!imgResponse.ok) {
+          const errText = await imgResponse.text()
+          throw new Error(`Image generation API error: ${errText}`)
+        }
+
+        const imgData = await imgResponse.json() as { data: Array<{ b64_json: string }> }
+        const b64 = imgData.data?.[0]?.b64_json
+        if (!b64) throw new Error('No image data returned')
+
+        return `data:image/png;base64,${b64}`
+      } catch (imgErr) {
+        console.error('Style image generation failed:', imgErr)
+        return null
       }
-
-      const imgData = await imgResponse.json() as { data: Array<{ b64_json: string }> }
-      const b64 = imgData.data?.[0]?.b64_json
-      if (!b64) throw new Error('No image data returned')
-
-      return `data:image/png;base64,${b64}`
-    }
-
-    const generateStyleImages = async (): Promise<string[]> => {
-      const results = await Promise.allSettled(styleImagePrompts.map(generateOneStyleImage))
-      return results
-        .filter((r): r is PromiseFulfilledResult<string> => r.status === 'fulfilled')
-        .map(r => r.value)
     }
 
     // ─── Text report generation ───────────────────────────────────────────────
@@ -347,12 +348,12 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
     // ─── Run all in parallel ──────────────────────────────────────────────────
     let reportResponse: Response
-    let styleImages: string[] = []
+    let styleImage: string | null = null
 
     try {
-      const results = await Promise.all([reportPromise, generateStyleImages()])
+      const results = await Promise.all([reportPromise, generateStyleImage()])
       reportResponse = results[0]
-      styleImages = results[1]
+      styleImage = results[1]
     } catch (parallelErr) {
       console.error('Analysis generation failed:', parallelErr)
       await triggerRefund(`Analysis generation failed: ${String(parallelErr)}`)
@@ -394,13 +395,13 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     // ─── Send email ───────────────────────────────────────────────────────────
     if (customerEmail && resendKey) {
       // Fire-and-forget: don't block on email sending
-      sendReportEmail(customerEmail, report, styleImages[0] ?? null, locale, resendKey).catch(e => {
+      sendReportEmail(customerEmail, report, styleImage, locale, resendKey).catch(e => {
         console.error('Email send failed:', e)
       })
     }
 
     return new Response(
-      JSON.stringify({ report, styleImages }),
+      JSON.stringify({ report, styleImage }),
       { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
     )
   } catch (unexpectedErr) {
