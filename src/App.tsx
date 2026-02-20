@@ -155,22 +155,24 @@ function App() {
     return new Promise((resolve) => {
       const img = new Image()
       img.onload = () => {
-        const MAX_PX = 1500
-        let { width, height } = img
-        if (width > MAX_PX || height > MAX_PX) {
-          if (width > height) {
-            height = Math.round((height * MAX_PX) / width)
-            width = MAX_PX
-          } else {
-            width = Math.round((width * MAX_PX) / height)
-            height = MAX_PX
-          }
-        }
+        // OpenAI Edits API requires a SQUARE image.
+        const size = Math.min(img.width, img.height, 1024)
         const canvas = document.createElement('canvas')
-        canvas.width = width
-        canvas.height = height
-        canvas.getContext('2d')!.drawImage(img, 0, 0, width, height)
-        resolve(canvas.toDataURL('image/jpeg', 0.85))
+        canvas.width = size
+        canvas.height = size
+        
+        const ctx = canvas.getContext('2d')!
+        // Center crop
+        const offsetX = (img.width - Math.min(img.width, img.height)) / 2
+        const offsetY = (img.height - Math.min(img.width, img.height)) / 2
+        
+        ctx.drawImage(
+          img,
+          offsetX, offsetY, Math.min(img.width, img.height), Math.min(img.width, img.height),
+          0, 0, size, size
+        )
+        // OpenAI Edits MUST be PNG
+        resolve(canvas.toDataURL('image/png'))
       }
       img.src = dataUrl
     })
