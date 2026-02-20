@@ -1,3 +1,5 @@
+import { buildStylePrompt, STYLE_CONFIG } from './_prompts'
+
 interface Env {
   OPENAI_API_KEY: string;
 }
@@ -13,53 +15,11 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type",
 }
 
-const STYLE_PROMPT = `You are the best fashion stylist in the world.
-
-Using the attached image, create a single composite image containing three separate vertical panels arranged in a 1×3 horizontal grid (side-by-side).
-
-IMPORTANT STRUCTURE:
-Each panel must behave like its own independent vertical 9:16 frame.
-The three panels are placed next to each other inside one wide canvas.
-No panel may be cropped on the left or right edges.
-
-Left panel: Effortless Daily Styling  
-Center panel: Clean Modern Styling  
-Right panel: Hip / Trendy Contemporary Styling  
-
-STRICT FRAMING RULES FOR EACH PANEL:
-
-Full body including shoes fully visible.
-Wide framing.
-Vertical 9:16 composition inside each panel.
-
-Full-length long shot from a distance.
-The subject appears smaller within the panel.
-The subject occupies only about 50–55% of the panel height.
-
-Large visible empty space above the head.
-Clearly visible floor extending below the shoes.
-
-The shoes must be completely visible inside the frame.
-The shoes must NOT touch the bottom edge.
-The head must NOT touch the top edge.
-
-CRITICAL:
-Generous empty space must also exist on BOTH left and right sides of the subject inside each panel.
-The subject must not touch or approach the side edges.
-
-Centered subject in each panel.
-Standing straight.
-Plain clean studio background.
-Soft natural lighting.
-Balanced negative space.
-High-end editorial lookbook photography.
-No cropping.
-No edge clipping.`
-
 async function base64ToBlob(base64: string): Promise<Blob> {
-  const [header, data] = base64.split(',')
-  const mime = header.match(/:(.*?);/)?.[1] || 'image/jpeg'
-  const binary = atob(data)
+  const base64Data = base64.includes(',') ? base64.split(',')[1] : base64
+  const mime = base64.includes(',') ? base64.match(/:(.*?);/)?.[1] || 'image/jpeg' : 'image/jpeg'
+  
+  const binary = atob(base64Data)
   const array = new Uint8Array(binary.length)
   for (let i = 0; i < binary.length; i++) {
     array[i] = binary.charCodeAt(i)
@@ -69,7 +29,7 @@ async function base64ToBlob(base64: string): Promise<Blob> {
 
 export const onRequestPost: PagesFunction<Env> = async (context) => {
   try {
-    const { photo, gender } = (await context.request.json()) as { photo?: string, gender?: string }
+    const { photo } = (await context.request.json()) as { photo?: string }
 
     const apiKey = context.env.OPENAI_API_KEY
     if (!apiKey) {
@@ -88,25 +48,18 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
     const imageBlob = await base64ToBlob(photo)
     const formData = new FormData()
-    
-    // Using the parameters from the user's curl command
     formData.append('image', imageBlob, 'input.jpg')
-    formData.append('prompt', STYLE_PROMPT)
-    formData.append('model', 'gpt-image-1.5')
-    formData.append('n', '1')
-    formData.append('size', '1024x1024')
-    formData.append('quality', 'auto')
-    formData.append('background', 'auto')
-    formData.append('moderation', 'auto')
-    formData.append('input_fidelity', 'high')
-    formData.append('response_format', 'b64_json')
+    formData.append('prompt', buildStylePrompt())
+    
+    // Use config from _prompts.ts
+    Object.entries(STYLE_CONFIG).forEach(([key, value]) => {
+      formData.append(key, String(value))
+    })
 
     console.log('[GenerateImage] Sending request to OpenAI Image Edits API...')
     const response = await fetch('https://api.openai.com/v1/images/edits', {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-      },
+      headers: { Authorization: `Bearer ${apiKey}` },
       body: formData,
     })
 

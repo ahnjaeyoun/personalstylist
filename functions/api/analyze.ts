@@ -1,4 +1,10 @@
-import { buildAnalysisPrompt, buildUserMessage, buildErrorMessages } from './_prompts'
+import { 
+  buildAnalysisPrompt, 
+  buildUserMessage, 
+  buildErrorMessages, 
+  buildStylePrompt, 
+  STYLE_CONFIG 
+} from './_prompts'
 import type { Locale } from './_prompts'
 
 interface Env {
@@ -20,55 +26,14 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type",
 }
 
-const STYLE_PROMPT = `You are the best fashion stylist in the world.
-
-Using the attached image, create a single composite image containing three separate vertical panels arranged in a 1×3 horizontal grid (side-by-side).
-
-IMPORTANT STRUCTURE:
-Each panel must behave like its own independent vertical 9:16 frame.
-The three panels are placed next to each other inside one wide canvas.
-No panel may be cropped on the left or right edges.
-
-Left panel: Effortless Daily Styling  
-Center panel: Clean Modern Styling  
-Right panel: Hip / Trendy Contemporary Styling  
-
-STRICT FRAMING RULES FOR EACH PANEL:
-
-Full body including shoes fully visible.
-Wide framing.
-Vertical 9:16 composition inside each panel.
-
-Full-length long shot from a distance.
-The subject appears smaller within the panel.
-The subject occupies only about 50–55% of the panel height.
-
-Large visible empty space above the head.
-Clearly visible floor extending below the shoes.
-
-The shoes must be completely visible inside the frame.
-The shoes must NOT touch the bottom edge.
-The head must NOT touch the top edge.
-
-CRITICAL:
-Generous empty space must also exist on BOTH left and right sides of the subject inside each panel.
-The subject must not touch or approach the side edges.
-
-Centered subject in each panel.
-Standing straight.
-Plain clean studio background.
-Soft natural lighting.
-Balanced negative space.
-High-end editorial lookbook photography.
-No cropping.
-No edge clipping.`
-
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 async function base64ToBlob(base64: string): Promise<Blob> {
-  const [header, data] = base64.split(',')
-  const mime = header.match(/:(.*?);/)?.[1] || 'image/jpeg'
-  const binary = atob(data)
+  // Ensure we handle both data URL and raw base64
+  const base64Data = base64.includes(',') ? base64.split(',')[1] : base64
+  const mime = base64.includes(',') ? base64.match(/:(.*?);/)?.[1] || 'image/jpeg' : 'image/jpeg'
+  
+  const binary = atob(base64Data)
   const array = new Uint8Array(binary.length)
   for (let i = 0; i < binary.length; i++) {
     array[i] = binary.charCodeAt(i)
@@ -154,7 +119,7 @@ function renderMarkdownToHtml(text: string): string {
   return text
     .replace(/### (.*)/g, '<h3 style="color:#c9b99a;font-size:1rem;margin:1.2em 0 0.4em;">$1</h3>')
     .replace(/## (.*)/g, '<h2 style="color:#e8d5b7;font-size:1.15rem;margin:1.4em 0 0.5em;">$1</h2>')
-    .replace(/# (.*)/g, '<h1 style="color:#f5ede0;font-size:1.3rem;margin:1.6em 0 0.6em;">$1</h1>')
+    .replace(/# (.*)/g, '<h1 style="color:#f5ede0;font-size:1.3rem;margin:1.6+em 0 0.6em;">$1</h1>')
     .replace(/\*\*(.*?)\*\*/g, '<strong style="color:#e8d5b7;">$1</strong>')
     .replace(/\*(.*?)\*/g, '<em>$1</em>')
     .replace(/^- (.*)/gm, '<li style="margin:0.25em 0;">$1</li>')
@@ -304,6 +269,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
     const prompt = buildAnalysisPrompt(locale, gender, height, weight)
     const userMsg = buildUserMessage(locale, gender, height, weight)
+    const stylePrompt = buildStylePrompt()
 
     // ─── OpenAI Parallel Requests ───────────────────────────────────────────
     console.log('[Analyze] Starting OpenAI requests...')
@@ -332,7 +298,13 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
             },
           ],
         }),
-      }).then(r => r.json() as Promise<{ choices: Array<{ message: { content: string } }> }>)
+      }).then(async r => {
+        if (!r.ok) {
+          const errText = await r.text()
+          throw new Error(`OpenAI Text Error: ${r.status} - ${errText}`)
+        }
+        return r.json() as Promise<{ choices: Array<{ message: { content: string } }> }>
+      })
 
       // 2. Image Generation (OpenAI Image Edits)
       const imagePromise = (async () => {
@@ -340,15 +312,12 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
           const imageBlob = await base64ToBlob(photo)
           const formData = new FormData()
           formData.append('image', imageBlob, 'input.jpg')
-          formData.append('prompt', STYLE_PROMPT)
-          formData.append('model', 'gpt-image-1.5')
-          formData.append('n', '1')
-          formData.append('size', '1024x1024')
-          formData.append('quality', 'auto')
-          formData.append('background', 'auto')
-          formData.append('moderation', 'auto')
-          formData.append('input_fidelity', 'high')
-          formData.append('response_format', 'b64_json')
+          formData.append('prompt', stylePrompt)
+          
+          // Use config from _prompts.ts
+          Object.entries(STYLE_CONFIG).forEach(([key, value]) => {
+            formData.append(key, String(value))
+          })
 
           const res = await fetch('https://api.openai.com/v1/images/edits', {
             method: 'POST',
@@ -356,12 +325,22 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
             signal: controller.signal,
             body: formData,
           })
-          if (!res.ok) return null
+          
+          if (!res.ok) {
+            const errText = await res.text()
+            console.error('[Analyze] Image API Error:', res.status, errText)
+            return null
+          }
+          
           const data = await res.json() as { data: Array<{ b64_json?: string; url?: string }> }
           const imageData = data.data?.[0]
-          return imageData?.b64_json ? `data:image/png;base64,${imageData.b64_json}` : imageData?.url || null
+          
+          if (imageData?.b64_json) {
+            return `data:image/png;base64,${imageData.b64_json}`
+          }
+          return imageData?.url || null
         } catch (e) {
-          console.error('[Analyze] Image generation error:', e)
+          console.error('[Analyze] Image generation exception:', e)
           return null
         }
       })()
@@ -387,7 +366,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
     } catch (unexpectedErr) {
       clearTimeout(abortTimer)
-      console.error('[Analyze] Error:', unexpectedErr)
+      console.error('[Analyze] Request Failed:', unexpectedErr)
       return new Response(
         JSON.stringify({ error: (unexpectedErr as Error).message || 'Server error' }),
         { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
