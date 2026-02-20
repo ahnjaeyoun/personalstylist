@@ -1,16 +1,14 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
-import type { User, Session } from '@supabase/supabase-js'
+import type { User } from '@supabase/supabase-js'
 
 export function useAuth() {
   const [user, setUser] = useState<User | null>(null)
-  const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
   const [isRecovery, setIsRecovery] = useState(false)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session)
       setUser(session?.user ?? null)
       setLoading(false)
     })
@@ -20,7 +18,6 @@ export function useAuth() {
         if (event === 'PASSWORD_RECOVERY') {
           setIsRecovery(true)
         }
-        setSession(session)
         setUser(session?.user ?? null)
         setLoading(false)
       }
@@ -73,7 +70,6 @@ export function useAuth() {
 
   return {
     user,
-    session,
     loading,
     isLoggedIn: !!user,
     isRecovery,

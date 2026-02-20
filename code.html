@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Personal Stylist Home Variant 1</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&amp;family=Playfair+Display:ital,wght@0,400;0,700;1,400&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              colors: {
+                "primary": "#3211d4",
+                "background-light": "#f6f6f8",
+                "background-dark": "#131022",
+                "accent-beige": "#dcd7cf",
+                "charcoal-light": "#1e1b2e",
+              },
+              fontFamily: {
+                "display": ["Manrope", "sans-serif"],
+                "serif": ["Playfair Display", "serif"]
+              },
+              borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+            },
+          },
+        }
+    </script>
+<style>
+        body {
+            font-family: 'Manrope', sans-serif;
+            -webkit-font-smoothing: antialiased;
+        }
+        .serif-text {
+            font-family: 'Playfair Display', serif;
+        }
+        .glass-nav {
+            background: rgba(19, 16, 34, 0.8);
+            backdrop-filter: blur(12px);
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 font-display">
+<!-- Mobile Screen Container (Simulating iPhone dimensions) -->
+<div class="max-w-[430px] mx-auto min-h-screen relative overflow-hidden bg-background-light dark:bg-background-dark shadow-2xl">
+<!-- Header / Navigation -->
+<header class="fixed top-0 left-0 right-0 z-50 px-6 py-4 flex justify-between items-center glass-nav max-w-[430px] mx-auto">
+<div class="text-xl font-bold tracking-tighter serif-text">AURA <span class="text-xs font-light tracking-widest uppercase align-middle ml-1">Stylist</span></div>
+<button class="p-2 rounded-full hover:bg-white/10">
+<span class="material-icons text-2xl">menu</span>
+</button>
+</header>
+<!-- Hero Section -->
+<section class="relative h-[85vh] w-full flex flex-col justify-end">
+<!-- Hero Image Background -->
+<div class="absolute inset-0 z-0">
+<img alt="High fashion model in elegant attire" class="w-full h-full object-cover" data-alt="Elegant model wearing editorial fashion in high contrast lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA-fiwRa5-tCfjbVjLI5-JQtHfi40eZakC0FUExVdkxxV3nXjAcbDMRmQAWVi9q-2YxJkPMVVja-WV9uU1p6ebDpUpSfZav4BEDbWhhUrLa4ri6HF_pPMlzmwVjJNRtBgF567WHwkKZ41NzbfFoV-VGgzLrgNUF9EKrVlcccUd_CNJBTFXPeDXX8gXpzwxuULDA0EThiDiUgWk0FFkK9qMycHsPiFNR4ZtBvKEn2bb4Y8QMqY4ZWnJMKUI9cLc4A3XQC9WoHae-OZCT"/>
+<div class="absolute inset-0 bg-gradient-to-t from-background-dark via-background-dark/20 to-transparent"></div>
+</div>
+<!-- Hero Content -->
+<div class="relative z-10 px-6 pb-12">
+<h1 class="text-5xl md:text-6xl font-normal leading-tight serif-text mb-4 text-white">
+                    Find Your <br/>
+<span class="italic">Perfect Fit</span> <br/>
+                    with AI.
+                </h1>
+<p class="text-slate-300 text-lg mb-8 max-w-[80%] font-light leading-relaxed">
+                    Bespoke styling tailored to your unique measurements and aesthetic preferences.
+                </p>
+<button class="bg-primary hover:bg-primary/90 text-white font-semibold py-4 px-10 rounded-full transition-all flex items-center gap-3 w-fit group">
+                    Get Started
+                    <span class="material-icons text-lg group-hover:translate-x-1 transition-transform">arrow_forward</span>
+</button>
+</div>
+</section>
+<!-- How It Works Section -->
+<section class="px-6 py-20 bg-background-light dark:bg-charcoal-light">
+<div class="mb-12">
+<span class="text-primary text-xs font-bold tracking-[0.2em] uppercase">The Process</span>
+<h2 class="text-3xl font-normal serif-text mt-2">How It Works</h2>
+</div>
+<div class="space-y-12">
+<!-- Step 1 -->
+<div class="flex items-start gap-6 group">
+<div class="w-12 h-12 flex-shrink-0 bg-primary/10 rounded-xl flex items-center justify-center text-primary">
+<span class="material-icons">straighten</span>
+</div>
+<div>
+<h3 class="text-xl font-semibold mb-2">1. Input Body Data</h3>
+<p class="text-slate-500 dark:text-slate-400 font-light leading-relaxed">
+                            Share your height and weight metrics to help our AI understand your unique silhouette.
+                        </p>
+</div>
+</div>
+<!-- Step 2 -->
+<div class="flex items-start gap-6 group">
+<div class="w-12 h-12 flex-shrink-0 bg-primary/10 rounded-xl flex items-center justify-center text-primary">
+<span class="material-icons">add_a_photo</span>
+</div>
+<div>
+<h3 class="text-xl font-semibold mb-2">2. Upload Photo</h3>
+<p class="text-slate-500 dark:text-slate-400 font-light leading-relaxed">
+                            A simple full-body photo allows the AI to analyze your posture and skin undertones.
+                        </p>
+</div>
+</div>
+<!-- Step 3 -->
+<div class="flex items-start gap-6 group">
+<div class="w-12 h-12 flex-shrink-0 bg-primary/10 rounded-xl flex items-center justify-center text-primary">
+<span class="material-icons">auto_awesome</span>
+</div>
+<div>
+<h3 class="text-xl font-semibold mb-2">3. Receive AI Curation</h3>
+<p class="text-slate-500 dark:text-slate-400 font-light leading-relaxed">
+                            Receive a personalized digital lookbook with items perfectly matched to you.
+                        </p>
+</div>
+</div>
+</div>
+</section>
+<!-- Gallery / Inspiration Teaser -->
+<section class="px-6 py-20 pb-32">
+<div class="flex justify-between items-end mb-8">
+<h2 class="text-3xl font-normal serif-text">Curated For You</h2>
+<a class="text-primary text-sm font-semibold border-b border-primary/30 pb-1" href="#">View Collection</a>
+</div>
+<div class="grid grid-cols-2 gap-4">
+<div class="space-y-4">
+<div class="h-64 rounded-xl overflow-hidden relative">
+<img alt="Minimalist street style" class="w-full h-full object-cover" data-alt="Minimalist street style outfit on a model" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAYI7j-EeOyCrvgcZvfnq9qsfYK5kZfteGOM17HwZoeKHZfsAvotEi-YKyr4kAEF-H6AOQ6Scw22oHlR0KqktTmsnp_0jWYq1QLJmDbNW5_QhOh6y4prFivL_XwGcFaFGKnT0Uo7pB_FvF_hNRCWXBJW0UV1tPqP52zGZRiWYhkpu6ee19V1WRux0Zs1SY5EdEeI0mHufL4CpTLGOtUGlOLoUvNriytLvHUmlM8JcvA7MIVA4bSMc9s98pMu_MbzuVfJpC3msM7E0Pc"/>
+</div>
+<div class="h-48 rounded-xl overflow-hidden relative">
+<img alt="Fashion detail" class="w-full h-full object-cover" data-alt="Close up of high quality fabric and clothing details" src="https://lh3.googleusercontent.com/aida-public/AB6AXuB_OwgVmGf8vN2ie_mIgxpJ3Mm7JGqaBziCCcH3Zq-TIOHUjJoH6vC3GfbLmyeBfInP8iA-N6CtnRGtOMliK_Kj8XVdedVgNkPI-ul6zYhouSJtSr2YK_d3CaBWaZinfmJ50nX37A94Gfn0aW9uAZ1ApO5IzsCSmbQvyK8eU9F4AT9aSRtneq0gW_6FjAoNWz5XI5W5iIoCe-cE-VzwEzW0FHtzRMMVVcBuXjIGgath6UCKrUh2qvQKTtOvv2iE-8OTGhTxLTYZdu3-"/>
+</div>
+</div>
+<div class="pt-12 space-y-4">
+<div class="h-48 rounded-xl overflow-hidden relative">
+<img alt="Sophisticated evening wear" class="w-full h-full object-cover" data-alt="Sophisticated dark evening wear style" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAPQdj00w1TIqnwjHIuV5ESdVkOlFIhhpZDp-FGeRHn5zZ8wDsaJruAfK2t2ymDRwzGGQUDGkX3VJhiAAaz4o16qwcSgnfgx8DSCTqMrVfccRt9d6j7MNB-D-gj-xzdtgfBSux3KDXa4df3cR87k4CKC8z5H881WS2ei0sDtEoq46gZ0ClwohxUEVjfIkOC4_2sNnwBFHO_xw70qJGKloXV3GBSWsASyES-0a9S4JBzsMX56pbFiDCD3twM6kTemwO4cUTDgvQ99Kur"/>
+</div>
+<div class="h-64 rounded-xl overflow-hidden relative">
+<img alt="Modern minimalist aesthetic" class="w-full h-full object-cover" data-alt="Modern minimalist fashion aesthetic in soft lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBx2ZycIOHUoBR79OG3WzOMgCCZxQV-6xNqrY6K4YHHYInk39gxiVYy3ObJvwpGSdqGWJEh4QIyc_p6ZNrA4bjiZRqcOWvqbX_2z7kep62CABj6sJEQrG3AjsTGXpOZK0uMjHuwAkNlx3TacT-tj_a6SDLr4XgR1bxfZvZyrdDEt6ba7uACeWmQpUBTfWe_Tw-cv8iIpKBzDyiQH4WNzuYf6MpO0ToKXrbRswZBuhs22v1b1sL4ADko-MX0IX3jHkLm8-W45CV3z4SV"/>
+</div>
+</div>
+</div>
+</section>
+<!-- Bottom Tab Bar (iOS Style) -->
+<nav class="fixed bottom-0 left-0 right-0 z-50 px-8 py-6 glass-nav flex justify-between items-center max-w-[430px] mx-auto border-t border-white/5">
+<button class="flex flex-col items-center gap-1 text-primary">
+<span class="material-icons">home</span>
+</button>
+<button class="flex flex-col items-center gap-1 text-slate-500">
+<span class="material-icons">explore</span>
+</button>
+<div class="absolute -top-6 left-1/2 -translate-x-1/2">
+<button class="w-14 h-14 bg-primary rounded-full flex items-center justify-center text-white shadow-lg shadow-primary/30">
+<span class="material-icons text-3xl">add</span>
+</button>
+</div>
+<button class="flex flex-col items-center gap-1 text-slate-500">
+<span class="material-icons">bookmark_border</span>
+</button>
+<button class="flex flex-col items-center gap-1 text-slate-500">
+<span class="material-icons">person_outline</span>
+</button>
+</nav>
+<!-- Home Indicator (iOS) -->
+<div class="fixed bottom-1 left-1/2 -translate-x-1/2 w-32 h-1 bg-white/20 rounded-full z-[60] max-w-[430px]"></div>
+</div>
+</body></html>
