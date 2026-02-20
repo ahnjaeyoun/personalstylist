@@ -347,7 +347,6 @@ function localApiPlugin(): Plugin {
 
           const mimeType = base64Match[1]
           const buffer = Buffer.from(base64Match[2], 'base64')
-          const { FormData, Blob } = await import('node:buffer')
           const photoBlob = new Blob([buffer], { type: `image/${mimeType}` })
           const photoFilename = `photo.${mimeType === 'jpeg' ? 'jpg' : mimeType}`
 
@@ -362,10 +361,11 @@ function localApiPlugin(): Plugin {
           formData.append('moderation', 'auto')
           formData.append('input_fidelity', 'high')
 
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const imgResponse = await fetch('https://api.openai.com/v1/images/edits', {
             method: 'POST',
             headers: { Authorization: `Bearer ${apiKey}` },
-            body: formData as unknown as BodyInit,
+            body: formData as any,
           })
 
           if (!imgResponse.ok) {
