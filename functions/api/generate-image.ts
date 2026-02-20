@@ -1,4 +1,4 @@
-import { buildStylePrompt, STYLE_CONFIG } from './_prompts'
+import { buildStylePrompt, STYLE_IMAGE_CONFIG } from './_prompts'
 
 interface Env {
   OPENAI_API_KEY: string;
@@ -52,7 +52,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     formData.append('prompt', buildStylePrompt())
     
     // Use config from _prompts.ts
-    Object.entries(STYLE_CONFIG).forEach(([key, value]) => {
+    Object.entries(STYLE_IMAGE_CONFIG).forEach(([key, value]) => {
       formData.append(key, String(value))
     })
 
