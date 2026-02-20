@@ -1,6 +1,7 @@
 export type Locale = 'en' | 'ko'
 
-export const STYLE_CONFIG = {
+// 이미지 생성 상세 설정 (사용자 제공 curl 기반)
+export const STYLE_IMAGE_CONFIG = {
   model: 'gpt-image-1.5',
   n: 1,
   size: '1024x1024' as const,

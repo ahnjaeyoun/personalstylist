@@ -195,6 +195,7 @@ const runAnalysis = useCallback(async () => {
     setError(null)
     setReport(null)
     setStyleImage(null)
+    setStyleImageLoading(true)
 
     try {
       const res = await fetch('/api/analyze', {
