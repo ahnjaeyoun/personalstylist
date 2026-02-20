@@ -226,7 +226,7 @@ const runAnalysis = useCallback(async () => {
       fetch('/api/generate-image', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ photo }),
+        body: JSON.stringify({ gender }),
       })
         .then(r => r.json())
         .then((imgData: { image?: string }) => {

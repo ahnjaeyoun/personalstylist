@@ -319,13 +319,7 @@ function localApiPlugin(): Plugin {
 
         try {
           const body = await readBody(req)
-          const { photo } = JSON.parse(body)
-
-          if (!photo) {
-            res.writeHead(400, { 'Content-Type': 'application/json' })
-            res.end(JSON.stringify({ error: 'Missing photo' }))
-            return
-          }
+          const { gender } = JSON.parse(body)
 
           const apiKey = process.env.OPENAI_API_KEY
           if (!apiKey) {
@@ -334,74 +328,33 @@ function localApiPlugin(): Plugin {
             return
           }
 
-          const matches = photo.match(/^data:([^;]+);base64,(.+)$/)
-          if (!matches) {
-            res.writeHead(400, { 'Content-Type': 'application/json' })
-            res.end(JSON.stringify({ error: 'Invalid photo format' }))
-            return
-          }
+          const subject = gender === 'male' ? 'a young man' : 'a young woman'
+          const prompt = `A high-end editorial lookbook photograph showing three full-body fashion shots of ${subject}, arranged side by side as a 1×3 horizontal grid on a single wide canvas.
 
-          const mimeType = matches[1]
-          const base64Data = matches[2]
-          const buffer = Buffer.from(base64Data, 'base64')
-          const imageBlob = new Blob([buffer], { type: mimeType })
+Left panel label: Effortless Daily Styling — casual, relaxed, everyday wear.
+Center panel label: Clean Modern Styling — minimal, structured, contemporary.
+Right panel label: Hip / Trendy Contemporary Styling — bold, fashionable, current street trends.
 
-          const STYLE_IMAGE_PROMPT = `You are the best fashion stylist in the world.
+Rules for every panel:
+- Full body visible from head to toe including shoes.
+- The subject occupies about 50% of the panel height, centered.
+- Generous empty space above the head and below the shoes.
+- Generous empty space on both left and right sides of the subject.
+- Plain clean studio background, soft natural lighting.
+- Standing straight, balanced posture.
+- High-end editorial photography style, no cropping, no edge clipping.`
 
-Using the attached image, create a single composite image containing three separate vertical panels arranged in a 1×3 horizontal grid (side-by-side).
-
-IMPORTANT STRUCTURE:
-Each panel must behave like its own independent vertical 9:16 frame.
-The three panels are placed next to each other inside one wide canvas.
-No panel may be cropped on the left or right edges.
-
-Left panel: Effortless Daily Styling
-Center panel: Clean Modern Styling
-Right panel: Hip / Trendy Contemporary Styling
-
-STRICT FRAMING RULES FOR EACH PANEL:
-
-Full body including shoes fully visible.
-Wide framing.
-Vertical 9:16 composition inside each panel.
-
-Full-length long shot from a distance.
-The subject appears smaller within the panel.
-The subject occupies only about 50–55% of the panel height.
-
-Large visible empty space above the head.
-Clearly visible floor extending below the shoes.
-
-The shoes must be completely visible inside the frame.
-The shoes must NOT touch the bottom edge.
-The head must NOT touch the top edge.
-
-CRITICAL:
-Generous empty space must also exist on BOTH left and right sides of the subject inside each panel.
-The subject must not touch or approach the side edges.
-
-Centered subject in each panel.
-Standing straight.
-Plain clean studio background.
-Soft natural lighting.
-Balanced negative space.
-High-end editorial lookbook photography.
-No cropping.
-No edge clipping.`
-
-          const formData = new FormData()
-          const ext = mimeType.includes('png') ? 'png' : 'jpg'
-          formData.append('image', imageBlob, `photo.${ext}`)
-          formData.append('prompt', STYLE_IMAGE_PROMPT)
-          formData.append('model', 'gpt-image-1')
-          formData.append('n', '1')
-          formData.append('size', '1536x1024')
-          formData.append('quality', 'standard')
-
-          const response = await fetch('https://api.openai.com/v1/images/edits', {
+          const response = await fetch('https://api.openai.com/v1/images/generations', {
             method: 'POST',
-            headers: { Authorization: `Bearer ${apiKey}` },
-            body: formData,
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+            body: JSON.stringify({
+              model: 'dall-e-3',
+              prompt,
+              n: 1,
+              size: '1792x1024',
+              quality: 'standard',
+              response_format: 'b64_json',
+            }),
           })
 
           if (!response.ok) {

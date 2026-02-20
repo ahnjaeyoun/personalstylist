@@ -13,59 +13,27 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type",
 }
 
-const STYLE_IMAGE_PROMPT = `You are the best fashion stylist in the world.
+function buildStylePrompt(gender: string): string {
+  const subject = gender === 'male' ? 'a young man' : 'a young woman'
+  return `A high-end editorial lookbook photograph showing three full-body fashion shots of ${subject}, arranged side by side as a 1×3 horizontal grid on a single wide canvas.
 
-Using the attached image, create a single composite image containing three separate vertical panels arranged in a 1×3 horizontal grid (side-by-side).
+Left panel label: Effortless Daily Styling — casual, relaxed, everyday wear.
+Center panel label: Clean Modern Styling — minimal, structured, contemporary.
+Right panel label: Hip / Trendy Contemporary Styling — bold, fashionable, current street trends.
 
-IMPORTANT STRUCTURE:
-Each panel must behave like its own independent vertical 9:16 frame.
-The three panels are placed next to each other inside one wide canvas.
-No panel may be cropped on the left or right edges.
-
-Left panel: Effortless Daily Styling
-Center panel: Clean Modern Styling
-Right panel: Hip / Trendy Contemporary Styling
-
-STRICT FRAMING RULES FOR EACH PANEL:
-
-Full body including shoes fully visible.
-Wide framing.
-Vertical 9:16 composition inside each panel.
-
-Full-length long shot from a distance.
-The subject appears smaller within the panel.
-The subject occupies only about 50–55% of the panel height.
-
-Large visible empty space above the head.
-Clearly visible floor extending below the shoes.
-
-The shoes must be completely visible inside the frame.
-The shoes must NOT touch the bottom edge.
-The head must NOT touch the top edge.
-
-CRITICAL:
-Generous empty space must also exist on BOTH left and right sides of the subject inside each panel.
-The subject must not touch or approach the side edges.
-
-Centered subject in each panel.
-Standing straight.
-Plain clean studio background.
-Soft natural lighting.
-Balanced negative space.
-High-end editorial lookbook photography.
-No cropping.
-No edge clipping.`
+Rules for every panel:
+- Full body visible from head to toe including shoes.
+- The subject occupies about 50% of the panel height, centered.
+- Generous empty space above the head and below the shoes.
+- Generous empty space on both left and right sides of the subject.
+- Plain clean studio background, soft natural lighting.
+- Standing straight, balanced posture.
+- High-end editorial photography style, no cropping, no edge clipping.`
+}
 
 export const onRequestPost: PagesFunction<Env> = async (context) => {
   try {
-    const { photo } = (await context.request.json()) as { photo: string }
-
-    if (!photo) {
-      return new Response(
-        JSON.stringify({ error: 'Missing photo' }),
-        { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
-      )
-    }
+    const { gender } = (await context.request.json()) as { gender?: string }
 
     const apiKey = context.env.OPENAI_API_KEY
     if (!apiKey) {
@@ -75,39 +43,22 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       )
     }
 
-    // Convert base64 data URL to Blob
-    const matches = photo.match(/^data:([^;]+);base64,(.+)$/)
-    if (!matches) {
-      return new Response(
-        JSON.stringify({ error: 'Invalid photo format' }),
-        { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
-      )
-    }
+    const prompt = buildStylePrompt(gender ?? 'female')
 
-    const mimeType = matches[1]
-    const base64Data = matches[2]
-    const binaryStr = atob(base64Data)
-    const bytes = new Uint8Array(binaryStr.length)
-    for (let i = 0; i < binaryStr.length; i++) {
-      bytes[i] = binaryStr.charCodeAt(i)
-    }
-    const imageBlob = new Blob([bytes], { type: mimeType })
-
-    const formData = new FormData()
-    const ext = mimeType.includes('png') ? 'png' : 'jpg'
-    formData.append('image', imageBlob, `photo.${ext}`)
-    formData.append('prompt', STYLE_IMAGE_PROMPT)
-    formData.append('model', 'gpt-image-1')
-    formData.append('n', '1')
-    formData.append('size', '1536x1024')
-    formData.append('quality', 'standard')
-
-    const response = await fetch('https://api.openai.com/v1/images/edits', {
+    const response = await fetch('https://api.openai.com/v1/images/generations', {
       method: 'POST',
       headers: {
+        'Content-Type': 'application/json',
         Authorization: `Bearer ${apiKey}`,
       },
-      body: formData,
+      body: JSON.stringify({
+        model: 'dall-e-3',
+        prompt,
+        n: 1,
+        size: '1792x1024',
+        quality: 'standard',
+        response_format: 'b64_json',
+      }),
     })
 
     if (!response.ok) {
