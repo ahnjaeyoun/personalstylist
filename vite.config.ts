@@ -242,62 +242,9 @@ function localApiPlugin(): Plugin {
 
           const prompt = buildAnalysisPrompt(locale, gender, height, weight)
           const userMsg = buildUserMessage(locale, gender, height, weight)
-          const styleImagePrompt = buildStyleImagePrompt(height, weight)
 
-          // ─── Style image ──────────────────────────────────────────────────
-          const base64Match = photo.match(/^data:image\/(.*?);base64,(.*)$/)
-          if (!base64Match) {
-            res.writeHead(400, { 'Content-Type': 'application/json' })
-            res.end(JSON.stringify({ error: err.missingFields }))
-            return
-          }
-          const mimeType = base64Match[1]
-          const photoFilename = `photo.${mimeType === 'jpeg' ? 'jpg' : mimeType}`
-          const photoBytes = Buffer.from(base64Match[2], 'base64')
-          const photoBlob = new Blob([photoBytes], { type: `image/${mimeType}` })
-
-          const generateStyleImage = async (): Promise<string | null> => {
-            try {
-              const formData = new FormData()
-              formData.append('image', photoBlob, photoFilename)
-              formData.append('model', 'gpt-image-1.5')
-              formData.append('prompt', styleImagePrompt)
-              formData.append('n', '1')
-              formData.append('size', '1024x1024')
-              formData.append('quality', 'auto')
-              formData.append('background', 'auto')
-              formData.append('moderation', 'auto')
-              formData.append('input_fidelity', 'high')
-
-              const imgResponse = await fetch('https://api.openai.com/v1/images/edits', {
-                method: 'POST',
-                headers: { Authorization: `Bearer ${apiKey}` },
-                body: formData,
-              })
-
-              if (!imgResponse.ok) {
-                const errText = await imgResponse.text()
-                throw new Error(`Image API error: ${errText}`)
-              }
-
-              const imgData = await imgResponse.json() as { data: Array<{ b64_json: string }> }
-              const b64 = imgData.data?.[0]?.b64_json
-              if (!b64) throw new Error('No image data returned')
-              return `data:image/png;base64,${b64}`
-            } catch (imgErr) {
-              console.error('Style image generation failed:', imgErr)
-              return null
-            }
-          }
-
-          const generateStyleImageSafe = (): Promise<string | null> =>
-            Promise.race([
-              generateStyleImage(),
-              new Promise<null>(resolve => setTimeout(() => resolve(null), 25000)),
-            ])
-
-          // ─── Text report ─────────────────────────────────────────────────
-          const reportPromise = fetch('https://api.openai.com/v1/responses', {
+          // ─── Text report only ─────────────────────────────────────────────
+          const response = await fetch('https://api.openai.com/v1/responses', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
             body: JSON.stringify({
@@ -311,22 +258,6 @@ function localApiPlugin(): Plugin {
               ],
             }),
           })
-
-          // ─── Run in parallel ──────────────────────────────────────────────
-          let response: Response
-          let styleImage: string | null = null
-
-          try {
-            const results = await Promise.all([reportPromise, generateStyleImageSafe()])
-            response = results[0]
-            styleImage = results[1]
-          } catch (parallelErr) {
-            console.error('Parallel generation failed:', parallelErr)
-            await triggerRefund(`Generation failed: ${String(parallelErr)}`)
-            res.writeHead(502, { 'Content-Type': 'application/json' })
-            res.end(JSON.stringify({ error: err.analysisFailed, refunded: true }))
-            return
-          }
 
           if (!response.ok) {
             const errorData = await response.text()
@@ -352,31 +283,108 @@ function localApiPlugin(): Plugin {
             return
           }
 
-          // ─── Send email ───────────────────────────────────────────────────
           if (customerEmail && resendKey) {
-            const subject = locale === 'ko'
-              ? 'AJY Stylist — 나만의 스타일 리포트가 도착했습니다'
-              : 'AJY Stylist — Your Personal Style Report'
-
             fetch('https://api.resend.com/emails', {
               method: 'POST',
               headers: { Authorization: `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 from: 'AJY Stylist <onboarding@resend.dev>',
                 to: [customerEmail],
-                subject,
-                html: `<p>Your style report is ready. Report text: ${report.substring(0, 100)}...</p>`,
+                subject: locale === 'ko' ? 'AJY Stylist — 나만의 스타일 리포트가 도착했습니다' : 'AJY Stylist — Your Personal Style Report',
+                html: `<p>${report.substring(0, 200)}...</p>`,
               }),
-            }).then(r => console.log(`[email] sent to ${customerEmail} ok=${r.ok}`))
-              .catch(e => console.error('[email] send failed:', e))
+            }).catch(e => console.error('[email] send failed:', e))
           }
 
           res.writeHead(200, { 'Content-Type': 'application/json', ...corsHeaders() })
-          res.end(JSON.stringify({ report, styleImage }))
+          res.end(JSON.stringify({ report }))
         } catch (unexpectedErr) {
           console.error('Analyze error:', unexpectedErr)
           res.writeHead(500, { 'Content-Type': 'application/json' })
           res.end(JSON.stringify({ error: 'Server error' }))
+        }
+      })
+
+      // ─── /api/image ───
+      server.middlewares.use('/api/image', async (req, res) => {
+        if (req.method === 'OPTIONS') {
+          res.writeHead(204, corsHeaders())
+          res.end()
+          return
+        }
+
+        if (req.method !== 'POST') {
+          res.writeHead(405, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ error: 'Method not allowed' }))
+          return
+        }
+
+        try {
+          const body = await readBody(req)
+          const { photo, height, weight } = JSON.parse(body)
+
+          if (!photo || !height || !weight) {
+            res.writeHead(200, { 'Content-Type': 'application/json', ...corsHeaders() })
+            res.end(JSON.stringify({ styleImage: null }))
+            return
+          }
+
+          const apiKey = process.env.OPENAI_API_KEY
+          if (!apiKey) {
+            res.writeHead(200, { 'Content-Type': 'application/json', ...corsHeaders() })
+            res.end(JSON.stringify({ styleImage: null }))
+            return
+          }
+
+          const styleImagePrompt = buildStyleImagePrompt(height, weight)
+
+          const base64Match = (photo as string).match(/^data:image\/(.*?);base64,(.*)$/)
+          if (!base64Match) {
+            res.writeHead(200, { 'Content-Type': 'application/json', ...corsHeaders() })
+            res.end(JSON.stringify({ styleImage: null }))
+            return
+          }
+
+          const mimeType = base64Match[1]
+          const buffer = Buffer.from(base64Match[2], 'base64')
+          const { FormData, Blob } = await import('node:buffer')
+          const photoBlob = new Blob([buffer], { type: `image/${mimeType}` })
+          const photoFilename = `photo.${mimeType === 'jpeg' ? 'jpg' : mimeType}`
+
+          const formData = new FormData()
+          formData.append('image', photoBlob, photoFilename)
+          formData.append('model', 'gpt-image-1.5')
+          formData.append('prompt', styleImagePrompt)
+          formData.append('n', '1')
+          formData.append('size', '1024x1024')
+          formData.append('quality', 'auto')
+          formData.append('background', 'auto')
+          formData.append('moderation', 'auto')
+          formData.append('input_fidelity', 'high')
+
+          const imgResponse = await fetch('https://api.openai.com/v1/images/edits', {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${apiKey}` },
+            body: formData as unknown as BodyInit,
+          })
+
+          if (!imgResponse.ok) {
+            const errText = await imgResponse.text()
+            console.error('Image generation API error:', errText)
+            res.writeHead(200, { 'Content-Type': 'application/json', ...corsHeaders() })
+            res.end(JSON.stringify({ styleImage: null }))
+            return
+          }
+
+          const imgData = await imgResponse.json() as { data: Array<{ b64_json: string }> }
+          const b64 = imgData.data?.[0]?.b64_json
+
+          res.writeHead(200, { 'Content-Type': 'application/json', ...corsHeaders() })
+          res.end(JSON.stringify({ styleImage: b64 ? `data:image/png;base64,${b64}` : null }))
+        } catch (unexpectedErr) {
+          console.error('Image error:', unexpectedErr)
+          res.writeHead(200, { 'Content-Type': 'application/json', ...corsHeaders() })
+          res.end(JSON.stringify({ styleImage: null }))
         }
       })
     },

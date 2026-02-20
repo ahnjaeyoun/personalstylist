@@ -1,4 +1,4 @@
-import { buildAnalysisPrompt, buildUserMessage, buildStyleImagePrompt, buildErrorMessages } from './_prompts'
+import { buildAnalysisPrompt, buildUserMessage, buildErrorMessages } from './_prompts'
 import type { Locale } from './_prompts'
 
 interface Env {
@@ -46,9 +46,6 @@ async function findOrderIdByCheckout(
   accessToken: string,
   maxAttempts = 4
 ): Promise<string | null> {
-  // Orders are created asynchronously after checkout confirmation.
-  // Retry with backoff — by the time AI analysis fails (tens of seconds),
-  // the order should almost always exist.
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     if (attempt > 0) {
       await new Promise(r => setTimeout(r, 3000 * attempt))
@@ -112,9 +109,8 @@ function renderMarkdownToHtml(text: string): string {
     .replace(/\n/g, '<br/>')
 }
 
-function buildEmailHtml(report: string, hairstyleImage: string | null, locale: Locale): string {
+function buildEmailHtml(report: string, locale: Locale): string {
   const reportHtml = renderMarkdownToHtml(report)
-  const hairstyleTitle = locale === 'ko' ? '추천 헤어스타일' : 'Recommended Hairstyles'
   const disclaimer = locale === 'ko'
     ? '본 보고서는 AI 소프트웨어가 자동 생성한 패션 참고 자료입니다. 전문 스타일리스트의 조언을 대체하지 않습니다.'
     : 'This report is AI-generated fashion reference material. It does not replace professional stylist advice.'
@@ -137,11 +133,6 @@ function buildEmailHtml(report: string, hairstyleImage: string | null, locale: L
           <td style="background:#131022;padding:36px 40px;">
             <p style="margin:0 0 1em;font-size:0.8rem;letter-spacing:0.12em;text-transform:uppercase;color:#7a6f8a;">${locale === 'ko' ? 'AI 분석 리포트' : 'AI Analysis Report'}</p>
             <div style="font-size:0.9em;line-height:1.8;color:#c9b99a;"><p style="margin:0 0 0.75em 0;">${reportHtml}</p></div>
-            ${hairstyleImage ? `
-            <div style="margin-top:2em;border-top:1px solid rgba(201,185,154,0.15);padding-top:1.5em;">
-              <p style="margin:0 0 1em;font-size:1rem;font-weight:600;color:#e8d5b7;">${hairstyleTitle}</p>
-              <img src="${hairstyleImage}" alt="${hairstyleTitle}" style="width:100%;max-width:520px;border-radius:12px;display:block;margin:0 auto;"/>
-            </div>` : ''}
             <div style="margin-top:2em;padding:16px 20px;background:rgba(255,255,255,0.04);border-radius:8px;border-left:3px solid rgba(201,185,154,0.4);">
               <p style="margin:0;font-size:0.78rem;color:#7a6f8a;line-height:1.6;">${disclaimer}</p>
             </div>
@@ -163,14 +154,13 @@ function buildEmailHtml(report: string, hairstyleImage: string | null, locale: L
 async function sendReportEmail(
   toEmail: string,
   report: string,
-  hairstyleImage: string | null,
   locale: Locale,
   resendApiKey: string
 ): Promise<void> {
   const subject = locale === 'ko'
     ? 'AJY Stylist — 나만의 스타일 리포트가 도착했습니다'
     : 'AJY Stylist — Your Personal Style Report'
-  const html = buildEmailHtml(report, hairstyleImage, locale)
+  const html = buildEmailHtml(report, locale)
 
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
@@ -246,13 +236,11 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         checkoutAmount = session.total_amount
       }
     } else if (user_email) {
-      // Subscribed user — no checkout, use their account email
       customerEmail = user_email
     }
 
     const prompt = buildAnalysisPrompt(locale, gender, height, weight)
     const userMsg = buildUserMessage(locale, gender, height, weight)
-    const styleImagePrompt = buildStyleImagePrompt(height, weight)
 
     // ─── Helper: trigger refund on failure ───────────────────────────────────
     const triggerRefund = async (reason: string) => {
@@ -266,68 +254,8 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       }
     }
 
-    // ─── Style image generation ───────────────────────────────────────────────
-    const base64Match = photo.match(/^data:image\/(.*?);base64,(.*)$/)
-    if (!base64Match) {
-      return new Response(
-        JSON.stringify({ error: err.missingFields }),
-        { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
-      )
-    }
-    const mimeType = base64Match[1]
-    const base64Data = base64Match[2]
-    const binaryString = atob(base64Data)
-    const bytes = new Uint8Array(binaryString.length)
-    for (let i = 0; i < binaryString.length; i++) {
-      bytes[i] = binaryString.charCodeAt(i)
-    }
-    const photoBlob = new Blob([bytes], { type: `image/${mimeType}` })
-    const photoFilename = `photo.${mimeType === 'jpeg' ? 'jpg' : mimeType}`
-
-    const generateStyleImage = async (): Promise<string | null> => {
-      try {
-        const formData = new FormData()
-        formData.append('image', photoBlob, photoFilename)
-        formData.append('model', 'gpt-image-1.5')
-        formData.append('prompt', styleImagePrompt)
-        formData.append('n', '1')
-        formData.append('size', '1024x1024')
-        formData.append('quality', 'auto')
-        formData.append('background', 'auto')
-        formData.append('moderation', 'auto')
-        formData.append('input_fidelity', 'high')
-
-        const imgResponse = await fetch('https://api.openai.com/v1/images/edits', {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${apiKey}` },
-          body: formData,
-        })
-
-        if (!imgResponse.ok) {
-          const errText = await imgResponse.text()
-          throw new Error(`Image generation API error: ${errText}`)
-        }
-
-        const imgData = await imgResponse.json() as { data: Array<{ b64_json: string }> }
-        const b64 = imgData.data?.[0]?.b64_json
-        if (!b64) throw new Error('No image data returned')
-
-        return `data:image/png;base64,${b64}`
-      } catch (imgErr) {
-        console.error('Style image generation failed:', imgErr)
-        return null
-      }
-    }
-
-    // 이미지 생성에 25초 타임아웃 — 초과 시 null 반환해 리포트 차단 방지
-    const generateStyleImageSafe = (): Promise<string | null> =>
-      Promise.race([
-        generateStyleImage(),
-        new Promise<null>(resolve => setTimeout(() => resolve(null), 25000)),
-      ])
-
-    // ─── Text report generation ───────────────────────────────────────────────
-    const reportPromise = fetch('https://api.openai.com/v1/responses', {
+    // ─── Text report generation only ─────────────────────────────────────────
+    const reportResponse = await fetch('https://api.openai.com/v1/responses', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -350,23 +278,6 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         ],
       }),
     })
-
-    // ─── Run all in parallel ──────────────────────────────────────────────────
-    let reportResponse: Response
-    let styleImage: string | null = null
-
-    try {
-      const results = await Promise.all([reportPromise, generateStyleImageSafe()])
-      reportResponse = results[0]
-      styleImage = results[1]
-    } catch (parallelErr) {
-      console.error('Analysis generation failed:', parallelErr)
-      await triggerRefund(`Analysis generation failed: ${String(parallelErr)}`)
-      return new Response(
-        JSON.stringify({ error: err.analysisFailed, refunded: true }),
-        { status: 502, headers: { "Content-Type": "application/json", ...corsHeaders } }
-      )
-    }
 
     if (!reportResponse.ok) {
       const errorData = await reportResponse.text()
@@ -399,14 +310,13 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
     // ─── Send email ───────────────────────────────────────────────────────────
     if (customerEmail && resendKey) {
-      // Fire-and-forget: don't block on email sending
-      sendReportEmail(customerEmail, report, styleImage, locale, resendKey).catch(e => {
+      sendReportEmail(customerEmail, report, locale, resendKey).catch(e => {
         console.error('Email send failed:', e)
       })
     }
 
     return new Response(
-      JSON.stringify({ report, styleImage }),
+      JSON.stringify({ report }),
       { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
     )
   } catch (unexpectedErr) {
