@@ -290,17 +290,23 @@ function localApiPlugin(): Plugin {
             }
           }
 
+          const generateStyleImageSafe = (): Promise<string | null> =>
+            Promise.race([
+              generateStyleImage(),
+              new Promise<null>(resolve => setTimeout(() => resolve(null), 25000)),
+            ])
+
           // ─── Text report ─────────────────────────────────────────────────
-          const reportPromise = fetch('https://api.openai.com/v1/chat/completions', {
+          const reportPromise = fetch('https://api.openai.com/v1/responses', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
             body: JSON.stringify({
               model: 'gpt-5-mini',
-              messages: [
-                { role: 'system', content: prompt },
+              input: [
+                { role: 'developer', content: [{ type: 'input_text', text: prompt }] },
                 { role: 'user', content: [
-                  { type: 'text', text: userMsg },
-                  { type: 'image_url', image_url: { url: photo, detail: 'high' } },
+                  { type: 'input_text', text: userMsg },
+                  { type: 'input_image', image_url: photo },
                 ]},
               ],
             }),
@@ -311,7 +317,7 @@ function localApiPlugin(): Plugin {
           let styleImage: string | null = null
 
           try {
-            const results = await Promise.all([reportPromise, generateStyleImage()])
+            const results = await Promise.all([reportPromise, generateStyleImageSafe()])
             response = results[0]
             styleImage = results[1]
           } catch (parallelErr) {
@@ -332,10 +338,12 @@ function localApiPlugin(): Plugin {
           }
 
           const data = await response.json() as {
-            choices: Array<{ message: { content: string } }>
+            output: Array<{ type: string; content?: Array<{ type: string; text: string }> }>
           }
 
-          const report = data.choices?.[0]?.message?.content
+          const messageOutput = data.output?.find((item: { type: string }) => item.type === 'message')
+          const textContent = messageOutput?.content?.find((c: { type: string }) => c.type === 'output_text')
+          const report = textContent?.text
 
           if (!report) {
             await triggerRefund('Report text extraction failed')

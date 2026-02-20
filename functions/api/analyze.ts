@@ -319,8 +319,15 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       }
     }
 
+    // 이미지 생성에 25초 타임아웃 — 초과 시 null 반환해 리포트 차단 방지
+    const generateStyleImageSafe = (): Promise<string | null> =>
+      Promise.race([
+        generateStyleImage(),
+        new Promise<null>(resolve => setTimeout(() => resolve(null), 25000)),
+      ])
+
     // ─── Text report generation ───────────────────────────────────────────────
-    const reportPromise = fetch('https://api.openai.com/v1/chat/completions', {
+    const reportPromise = fetch('https://api.openai.com/v1/responses', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -328,16 +335,16 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       },
       body: JSON.stringify({
         model: 'gpt-5-mini',
-        messages: [
+        input: [
           {
-            role: 'system',
-            content: prompt,
+            role: 'developer',
+            content: [{ type: 'input_text', text: prompt }],
           },
           {
             role: 'user',
             content: [
-              { type: 'text', text: userMsg },
-              { type: 'image_url', image_url: { url: photo, detail: 'high' } },
+              { type: 'input_text', text: userMsg },
+              { type: 'input_image', image_url: photo },
             ],
           },
         ],
@@ -349,7 +356,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     let styleImage: string | null = null
 
     try {
-      const results = await Promise.all([reportPromise, generateStyleImage()])
+      const results = await Promise.all([reportPromise, generateStyleImageSafe()])
       reportResponse = results[0]
       styleImage = results[1]
     } catch (parallelErr) {
@@ -372,12 +379,15 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     }
 
     const data = await reportResponse.json() as {
-      choices: Array<{
-        message: { content: string }
+      output: Array<{
+        type: string
+        content?: Array<{ type: string; text: string }>
       }>
     }
 
-    const report = data.choices?.[0]?.message?.content
+    const messageOutput = data.output?.find(item => item.type === 'message')
+    const textContent = messageOutput?.content?.find(c => c.type === 'output_text')
+    const report = textContent?.text
 
     if (!report) {
       await triggerRefund('Report text extraction failed')
