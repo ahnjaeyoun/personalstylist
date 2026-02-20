@@ -1,7 +1,7 @@
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import type { Plugin } from 'vite'
-import { buildAnalysisPrompt, buildUserMessage, buildStyleImagePrompt, buildErrorMessages } from './functions/api/_prompts'
+import { buildAnalysisPrompt, buildUserMessage, buildErrorMessages } from './functions/api/_prompts'
 import type { Locale } from './functions/api/_prompts'
 
 function readBody(req: import('http').IncomingMessage): Promise<string> {
@@ -248,7 +248,7 @@ function localApiPlugin(): Plugin {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
             body: JSON.stringify({
-              model: 'gpt-5-mini',
+              model: 'gpt-4o-mini',
               input: [
                 { role: 'developer', content: [{ type: 'input_text', text: prompt }] },
                 { role: 'user', content: [
@@ -305,88 +305,6 @@ function localApiPlugin(): Plugin {
         }
       })
 
-      // ─── /api/image ───
-      server.middlewares.use('/api/image', async (req, res) => {
-        if (req.method === 'OPTIONS') {
-          res.writeHead(204, corsHeaders())
-          res.end()
-          return
-        }
-
-        if (req.method !== 'POST') {
-          res.writeHead(405, { 'Content-Type': 'application/json' })
-          res.end(JSON.stringify({ error: 'Method not allowed' }))
-          return
-        }
-
-        try {
-          const body = await readBody(req)
-          const { photo, height, weight } = JSON.parse(body)
-
-          if (!photo || !height || !weight) {
-            res.writeHead(200, { 'Content-Type': 'application/json', ...corsHeaders() })
-            res.end(JSON.stringify({ styleImage: null }))
-            return
-          }
-
-          const apiKey = process.env.OPENAI_API_KEY
-          if (!apiKey) {
-            res.writeHead(200, { 'Content-Type': 'application/json', ...corsHeaders() })
-            res.end(JSON.stringify({ styleImage: null }))
-            return
-          }
-
-          const styleImagePrompt = buildStyleImagePrompt(height, weight)
-
-          const base64Match = (photo as string).match(/^data:image\/(.*?);base64,(.*)$/)
-          if (!base64Match) {
-            res.writeHead(200, { 'Content-Type': 'application/json', ...corsHeaders() })
-            res.end(JSON.stringify({ styleImage: null }))
-            return
-          }
-
-          const mimeType = base64Match[1]
-          const buffer = Buffer.from(base64Match[2], 'base64')
-          const photoBlob = new Blob([buffer], { type: `image/${mimeType}` })
-          const photoFilename = `photo.${mimeType === 'jpeg' ? 'jpg' : mimeType}`
-
-          const formData = new FormData()
-          formData.append('image', photoBlob, photoFilename)
-          formData.append('model', 'gpt-image-1.5')
-          formData.append('prompt', styleImagePrompt)
-          formData.append('n', '1')
-          formData.append('size', '1024x1024')
-          formData.append('quality', 'auto')
-          formData.append('background', 'auto')
-          formData.append('moderation', 'auto')
-          formData.append('input_fidelity', 'high')
-
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const imgResponse = await fetch('https://api.openai.com/v1/images/edits', {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${apiKey}` },
-            body: formData as any,
-          })
-
-          if (!imgResponse.ok) {
-            const errText = await imgResponse.text()
-            console.error('Image generation API error:', errText)
-            res.writeHead(200, { 'Content-Type': 'application/json', ...corsHeaders() })
-            res.end(JSON.stringify({ styleImage: null }))
-            return
-          }
-
-          const imgData = await imgResponse.json() as { data: Array<{ b64_json: string }> }
-          const b64 = imgData.data?.[0]?.b64_json
-
-          res.writeHead(200, { 'Content-Type': 'application/json', ...corsHeaders() })
-          res.end(JSON.stringify({ styleImage: b64 ? `data:image/png;base64,${b64}` : null }))
-        } catch (unexpectedErr) {
-          console.error('Image error:', unexpectedErr)
-          res.writeHead(200, { 'Content-Type': 'application/json', ...corsHeaders() })
-          res.end(JSON.stringify({ styleImage: null }))
-        }
-      })
     },
   }
 }

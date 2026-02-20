@@ -257,7 +257,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
     // ─── Text report generation only ─────────────────────────────────────────
     const controller = new AbortController()
-    const abortTimer = setTimeout(() => controller.abort(), 22000)
+    const abortTimer = setTimeout(() => controller.abort(), 28000)
 
     let reportResponse: Response
     try {
@@ -269,7 +269,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         },
         signal: controller.signal,
         body: JSON.stringify({
-          model: 'gpt-5-mini',
+          model: 'gpt-4o-mini',
           input: [
             {
               role: 'developer',

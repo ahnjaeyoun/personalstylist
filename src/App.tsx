@@ -36,8 +36,6 @@ function App() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [report, setReport] = useState<string | null>(null)
-  const [styleImage, setStyleImage] = useState<string | null>(null)
-  const [imageLoading, setImageLoading] = useState(false)
   const [paid, setPaid] = useState(false)
   const [hasSubscription, setHasSubscription] = useState(false)
   const [subscriptionLoading, setSubscriptionLoading] = useState(false)
@@ -188,32 +186,12 @@ function App() {
     }
   }
 
-  const fetchStyleImage = useCallback(async (photoData: string, h: string, w: string) => {
-    setImageLoading(true)
-    try {
-      const res = await fetch('/api/image', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ photo: photoData, height: h, weight: w }),
-      })
-      if (res.ok) {
-        const data = await res.json() as { styleImage?: string | null }
-        setStyleImage(data.styleImage ?? null)
-      }
-    } catch {
-      // 이미지 실패해도 리포트에는 영향 없음
-    } finally {
-      setImageLoading(false)
-    }
-  }, [])
-
-  const runAnalysis = useCallback(async () => {
+const runAnalysis = useCallback(async () => {
     if (!photo || !height || !weight || !gender) return
 
     setLoading(true)
     setError(null)
     setReport(null)
-    setStyleImage(null)
 
     try {
       const res = await fetch('/api/analyze', {
@@ -239,15 +217,12 @@ function App() {
 
       setReport(data.report ?? null)
       setPage('report')
-
-      // 이미지는 리포트 표시 후 별도로 로드
-      fetchStyleImage(photo, height, weight)
     } catch (err) {
       setError(err instanceof Error ? err.message : t.errorUnknown)
     } finally {
       setLoading(false)
     }
-  }, [photo, height, weight, gender, locale, t, checkoutId, user, fetchStyleImage])
+  }, [photo, height, weight, gender, locale, t, checkoutId, user])
 
   const startCheckoutFlow = useCallback(async () => {
     if (!photo || !height || !weight || !gender) return
@@ -445,7 +420,6 @@ function App() {
 
   const handleReset = () => {
     setReport(null)
-    setStyleImage(null)
     setError(null)
     setPaid(false)
     setCheckoutId(null)
@@ -455,7 +429,6 @@ function App() {
 
   const handleGoHome = () => {
     setReport(null)
-    setStyleImage(null)
     setError(null)
     setPhoto(null)
     setHeight('')
@@ -770,25 +743,6 @@ function App() {
                 className="report-content"
                 dangerouslySetInnerHTML={{ __html: renderMarkdown(report) }}
               />
-              {(imageLoading || styleImage) && (
-                <div className="hairstyle-section">
-                  <h2 className="hairstyle-title">{t.hairstyleTitle}</h2>
-                  {imageLoading ? (
-                    <div className="image-loading">
-                      <span className="material-icons" style={{ fontSize: 32, animation: 'spin 1.2s linear infinite', color: '#c9b99a' }}>autorenew</span>
-                      <p style={{ margin: '8px 0 0', fontSize: '0.85rem', color: '#7a6f8a' }}>
-                        {locale === 'ko' ? '스타일 이미지 생성 중...' : 'Generating style image...'}
-                      </p>
-                    </div>
-                  ) : styleImage ? (
-                    <img
-                      className="style-image"
-                      src={styleImage}
-                      alt={t.hairstyleTitle}
-                    />
-                  ) : null}
-                </div>
-              )}
             </div>
             <div className="report-capture-footer">
               <p>AI Fashion Styling by AJY Stylist</p>
