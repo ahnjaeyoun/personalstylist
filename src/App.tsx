@@ -42,6 +42,8 @@ function App() {
   const [saving, setSaving] = useState(false)
   const [sharing, setSharing] = useState(false)
   const [checkoutId, setCheckoutId] = useState<string | null>(null)
+  const [styleImage, setStyleImage] = useState<string | null>(null)
+  const [styleImageLoading, setStyleImageLoading] = useState(false)
   const [pendingSubmit, setPendingSubmit] = useState(false)
   const [showAuthRequired, setShowAuthRequired] = useState(false)
   const [showLoginRequired, setShowLoginRequired] = useState(false)
@@ -216,7 +218,22 @@ const runAnalysis = useCallback(async () => {
       }
 
       setReport(data.report ?? null)
+      setStyleImage(null)
+      setStyleImageLoading(true)
       setPage('report')
+
+      // Generate style image in background (non-blocking)
+      fetch('/api/generate-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ photo }),
+      })
+        .then(r => r.json())
+        .then((imgData: { image?: string }) => {
+          if (imgData.image) setStyleImage(imgData.image)
+        })
+        .catch(err => console.error('Style image generation failed:', err))
+        .finally(() => setStyleImageLoading(false))
     } catch (err) {
       setError(err instanceof Error ? err.message : t.errorUnknown)
     } finally {
@@ -420,6 +437,8 @@ const runAnalysis = useCallback(async () => {
 
   const handleReset = () => {
     setReport(null)
+    setStyleImage(null)
+    setStyleImageLoading(false)
     setError(null)
     setPaid(false)
     setCheckoutId(null)
@@ -429,6 +448,8 @@ const runAnalysis = useCallback(async () => {
 
   const handleGoHome = () => {
     setReport(null)
+    setStyleImage(null)
+    setStyleImageLoading(false)
     setError(null)
     setPhoto(null)
     setHeight('')
@@ -748,6 +769,26 @@ const runAnalysis = useCallback(async () => {
               <p>AI Fashion Styling by AJY Stylist</p>
             </div>
           </div>
+
+          {(styleImageLoading || styleImage) && (
+            <div className="style-image-section">
+              <div className="section-label">{locale === 'ko' ? 'AI 스타일 이미지' : 'AI Style Image'}</div>
+              {styleImageLoading && !styleImage ? (
+                <div className="style-image-loading">
+                  <div className="style-image-skeleton" />
+                  <p className="style-image-loading-text">
+                    {locale === 'ko' ? 'AI 스타일 이미지 생성 중...' : 'Generating AI style image...'}
+                  </p>
+                </div>
+              ) : styleImage ? (
+                <img
+                  src={styleImage}
+                  alt={locale === 'ko' ? 'AI 스타일 이미지' : 'AI Style Image'}
+                  className="style-image"
+                />
+              ) : null}
+            </div>
+          )}
 
           <div className="report-toolbar">
             <button className="toolbar-btn" onClick={handleSaveImage} disabled={saving}>

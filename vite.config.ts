@@ -303,6 +303,137 @@ function localApiPlugin(): Plugin {
         }
       })
 
+      // ─── /api/generate-image ───
+      server.middlewares.use('/api/generate-image', async (req, res) => {
+        if (req.method === 'OPTIONS') {
+          res.writeHead(204, corsHeaders())
+          res.end()
+          return
+        }
+
+        if (req.method !== 'POST') {
+          res.writeHead(405, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ error: 'Method not allowed' }))
+          return
+        }
+
+        try {
+          const body = await readBody(req)
+          const { photo } = JSON.parse(body)
+
+          if (!photo) {
+            res.writeHead(400, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ error: 'Missing photo' }))
+            return
+          }
+
+          const apiKey = process.env.OPENAI_API_KEY
+          if (!apiKey) {
+            res.writeHead(500, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ error: 'Missing API key' }))
+            return
+          }
+
+          const matches = photo.match(/^data:([^;]+);base64,(.+)$/)
+          if (!matches) {
+            res.writeHead(400, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ error: 'Invalid photo format' }))
+            return
+          }
+
+          const mimeType = matches[1]
+          const base64Data = matches[2]
+          const buffer = Buffer.from(base64Data, 'base64')
+          const imageBlob = new Blob([buffer], { type: mimeType })
+
+          const STYLE_IMAGE_PROMPT = `You are the best fashion stylist in the world.
+
+Using the attached image, create a single composite image containing three separate vertical panels arranged in a 1×3 horizontal grid (side-by-side).
+
+IMPORTANT STRUCTURE:
+Each panel must behave like its own independent vertical 9:16 frame.
+The three panels are placed next to each other inside one wide canvas.
+No panel may be cropped on the left or right edges.
+
+Left panel: Effortless Daily Styling
+Center panel: Clean Modern Styling
+Right panel: Hip / Trendy Contemporary Styling
+
+STRICT FRAMING RULES FOR EACH PANEL:
+
+Full body including shoes fully visible.
+Wide framing.
+Vertical 9:16 composition inside each panel.
+
+Full-length long shot from a distance.
+The subject appears smaller within the panel.
+The subject occupies only about 50–55% of the panel height.
+
+Large visible empty space above the head.
+Clearly visible floor extending below the shoes.
+
+The shoes must be completely visible inside the frame.
+The shoes must NOT touch the bottom edge.
+The head must NOT touch the top edge.
+
+CRITICAL:
+Generous empty space must also exist on BOTH left and right sides of the subject inside each panel.
+The subject must not touch or approach the side edges.
+
+Centered subject in each panel.
+Standing straight.
+Plain clean studio background.
+Soft natural lighting.
+Balanced negative space.
+High-end editorial lookbook photography.
+No cropping.
+No edge clipping.`
+
+          const formData = new FormData()
+          const ext = mimeType.includes('png') ? 'png' : 'jpg'
+          formData.append('image', imageBlob, `photo.${ext}`)
+          formData.append('prompt', STYLE_IMAGE_PROMPT)
+          formData.append('model', 'gpt-image-1')
+          formData.append('n', '1')
+          formData.append('size', '1536x1024')
+          formData.append('quality', 'standard')
+
+          const response = await fetch('https://api.openai.com/v1/images/edits', {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${apiKey}` },
+            body: formData,
+          })
+
+          if (!response.ok) {
+            const errorText = await response.text()
+            console.error('[GenerateImage] OpenAI error:', response.status, errorText)
+            res.writeHead(500, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ error: `Image generation failed: ${response.status}` }))
+            return
+          }
+
+          const data = await response.json() as { data: Array<{ b64_json?: string; url?: string }> }
+          const imageData = data.data?.[0]
+
+          if (!imageData) {
+            res.writeHead(500, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ error: 'No image data returned' }))
+            return
+          }
+
+          const image = imageData.b64_json
+            ? `data:image/png;base64,${imageData.b64_json}`
+            : imageData.url
+
+          res.writeHead(200, { 'Content-Type': 'application/json', ...corsHeaders() })
+          res.end(JSON.stringify({ image }))
+        } catch (unexpectedErr) {
+          console.error('[GenerateImage] error:', unexpectedErr)
+          res.writeHead(500, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ error: 'Server error' }))
+        }
+      })
+
     },
   }
 }
