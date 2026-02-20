@@ -18,19 +18,15 @@ type PagesFunction<E = unknown> = (context: {
   env: E;
 }) => Response | Promise<Response>;
 
-const POLAR_API = 'https://sandbox-api.polar.sh'
-
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type",
 }
 
-// ─── Helpers ────────────────────────────────────────────────────────────────
-
 async function base64ToBlob(base64: string): Promise<Blob> {
   const base64Data = base64.includes(',') ? base64.split(',')[1] : base64
-  const mime = base64.includes(',') ? base64.match(/:(.*?);/)?.[1] || 'image/jpeg' : 'image/jpeg'
+  const mime = base64.includes(',') ? base64.match(/:(.*?);/)?.[1] || 'image/png' : 'image/png'
   
   const binary = atob(base64Data)
   const array = new Uint8Array(binary.length)
@@ -40,129 +36,6 @@ async function base64ToBlob(base64: string): Promise<Blob> {
   return new Blob([array], { type: mime })
 }
 
-async function getCheckoutSession(
-  checkoutId: string,
-  accessToken: string
-): Promise<{ customer_email: string | null; total_amount: number } | null> {
-  try {
-    const res = await fetch(`${POLAR_API}/v1/checkouts/${checkoutId}`, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    })
-    if (!res.ok) return null
-    const data = await res.json() as { customer_email?: string | null; total_amount?: number }
-    return {
-      customer_email: data.customer_email ?? null,
-      total_amount: data.total_amount ?? 0,
-    }
-  } catch {
-    return null
-  }
-}
-
-async function findOrderIdByCheckout(
-  checkoutId: string,
-  accessToken: string,
-  maxAttempts = 4
-): Promise<string | null> {
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    if (attempt > 0) {
-      await new Promise(r => setTimeout(r, 3000 * attempt))
-    }
-    try {
-      const res = await fetch(
-        `${POLAR_API}/v1/orders/?checkout_id=${encodeURIComponent(checkoutId)}&limit=1`,
-        { headers: { Authorization: `Bearer ${accessToken}` } }
-      )
-      if (!res.ok) continue
-      const data = await res.json() as { items?: Array<{ id: string; total_amount: number }> }
-      if (data.items && data.items.length > 0) {
-        return data.items[0].id
-      }
-    } catch {
-      // continue retry
-    }
-  }
-  return null
-}
-
-async function issueRefund(
-  orderId: string,
-  amount: number,
-  accessToken: string,
-  reason: string
-): Promise<boolean> {
-  try {
-    const res = await fetch(`${POLAR_API}/v1/refunds/`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${accessToken}`,
-      },
-      body: JSON.stringify({
-        order_id: orderId,
-        reason: 'service_disruption',
-        amount,
-        comment: reason,
-        revoke_benefits: false,
-      }),
-    })
-    return res.ok
-  } catch {
-    return false
-  }
-}
-
-// ─── Email helper ─────────────────────────────────────────────────────────────
-
-function renderMarkdownToHtml(text: string): string {
-  return text
-    .replace(/### (.*)/g, '<h3 style="color:#c9b99a;font-size:1rem;margin:1.2em 0 0.4em;">$1</h3>')
-    .replace(/## (.*)/g, '<h2 style="color:#e8d5b7;font-size:1.15rem;margin:1.4em 0 0.5em;">$1</h2>')
-    .replace(/# (.*)/g, '<h1 style="color:#f5ede0;font-size:1.3rem;margin:1.6em 0 0.6em;">$1</h1>')
-    .replace(/\*\*(.*?)\*\*/g, '<strong style="color:#e8d5b7;">$1</strong>')
-    .replace(/\*(.*?)\*/g, '<em>$1</em>')
-    .replace(/^- (.*)/gm, '<li style="margin:0.25em 0;">$1</li>')
-    .replace(/(<li.*<\/li>)/s, '<ul style="padding-left:1.5em;margin:0.5em 0;">$1</ul>')
-    .replace(/\n\n/g, '</p><p style="margin:0.75em 0;">')
-    .replace(/\n/g, '<br/>')
-}
-
-function buildEmailHtml(report: string, locale: Locale, styleImage?: string): string {
-  const reportHtml = renderMarkdownToHtml(report)
-  const imageHtml = styleImage
-    ? `<div style="margin: 2em 0; text-align: center;">
-         <p style="margin: 0 0 1em; font-size: 0.8rem; letter-spacing: 0.12em; text-transform: uppercase; color: #7a6f8a;">${locale === 'ko' ? 'AI 스타일 제안' : 'AI Style Suggestion'}</p>
-         <img src="${styleImage}" alt="AI Style" style="width: 100%; max-width: 520px; border-radius: 12px; border: 1px solid rgba(201,185,154,0.2);" />
-       </div>`
-    : ''
-
-  return `<!DOCTYPE html>
-<html lang="${locale}">
-<head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
-<body style="margin:0;padding:0;background:#0d0b18;font-family:'Georgia',serif;color:#c9b99a;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background:#0d0b18;padding:32px 0;">
-    <tr><td align="center">
-      <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;">
-        <tr>
-          <td style="background:linear-gradient(135deg,#1a1530 0%,#231d3a 100%);border-radius:16px 16px 0 0;padding:32px 40px;text-align:center;border-bottom:1px solid rgba(201,185,154,0.2);">
-            <p style="margin:0;font-size:1.6rem;font-weight:700;color:#e8d5b7;letter-spacing:0.08em;">AJY <span style="color:#c9b99a;font-weight:400;font-size:1.1rem;">Stylist</span></p>
-            <p style="margin:8px 0 0;font-size:0.85rem;color:#7a6f8a;letter-spacing:0.12em;text-transform:uppercase;">AI Fashion Styling</p>
-          </td>
-        </tr>
-        <tr>
-          <td style="background:#131022;padding:36px 40px;">
-            <p style="margin:0 0 1em;font-size:0.8rem;letter-spacing:0.12em;text-transform:uppercase;color:#7a6f8a;">${locale === 'ko' ? 'AI 분석 리포트' : 'AI Analysis Report'}</p>
-            <div style="font-size:0.9em;line-height:1.8;color:#c9b99a;"><p style="margin:0 0 0.75em 0;">${reportHtml}</p></div>
-            ${imageHtml}
-          </td>
-        </tr>
-      </table>
-    </td></tr>
-  </table>
-</body>
-</html>`
-}
-
 async function sendReportEmail(
   toEmail: string,
   report: string,
@@ -170,29 +43,26 @@ async function sendReportEmail(
   resendApiKey: string,
   styleImage?: string
 ): Promise<void> {
-  const subject = locale === 'ko' ? 'AJY Stylist 리포트' : 'AJY Stylist Report'
-  const html = buildEmailHtml(report, locale, styleImage)
+  const subject = locale === 'ko' ? 'AJY Stylist 스타일 리포트' : 'AJY Stylist Style Report'
+  const reportHtml = report.replace(/\n/g, '<br/>')
+  const imageHtml = styleImage ? `<div style="margin-top:20px;"><img src="${styleImage}" style="width:100%;max-width:500px;border-radius:12px;"/></div>` : ''
+  
+  const html = `<html><body style="font-family:sans-serif;color:#333;">
+    <h2>${locale === 'ko' ? '나만의 스타일 리포트' : 'Your Style Report'}</h2>
+    <div>${reportHtml}</div>
+    ${imageHtml}
+  </body></html>`
 
   await fetch('https://api.resend.com/emails', {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${resendApiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      from: 'AJY Stylist <onboarding@resend.dev>',
-      to: [toEmail],
-      subject,
-      html,
-    }),
+    headers: { Authorization: `Bearer ${resendApiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ from: 'AJY Stylist <onboarding@resend.dev>', to: [toEmail], subject, html }),
   })
 }
 
-// ─── Main handler ─────────────────────────────────────────────────────────────
-
 export const onRequestPost: PagesFunction<Env> = async (context) => {
   try {
-    const { photo, height, weight, gender, locale: rawLocale, checkout_id, user_email } = await context.request.json() as any
+    const { photo, height, weight, gender, locale: rawLocale, user_email } = await context.request.json() as any
     const locale: Locale = rawLocale === 'en' ? 'en' : 'ko'
     const err = buildErrorMessages(locale)
     const apiKey = context.env.OPENAI_API_KEY
@@ -204,11 +74,12 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     const userMsg = buildUserMessage(locale, gender, height, weight)
     const stylePrompt = buildStylePrompt()
 
-    console.log('[Analyze] Starting OpenAI requests...')
+    console.log('[Analyze] Starting requests...')
     const controller = new AbortController()
     const abortTimer = setTimeout(() => controller.abort(), 28000)
 
     try {
+      // 1. Text Analysis
       const textPromise = fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
@@ -219,41 +90,63 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         }),
       }).then(r => r.json() as any)
 
+      // 2. Image Generation (Edits)
       const imagePromise = (async () => {
         try {
           const imageBlob = await base64ToBlob(photo)
           const formData = new FormData()
-          formData.append('image', imageBlob, 'input.jpg')
+          formData.append('image', imageBlob, 'image.png') // Always name it .png
           formData.append('prompt', stylePrompt)
-          Object.entries(STYLE_IMAGE_CONFIG).forEach(([key, value]) => formData.append(key, String(value)))
+          
+          // Apply configs from _prompts.ts
+          Object.entries(STYLE_IMAGE_CONFIG).forEach(([key, value]) => {
+            formData.append(key, String(value))
+          })
 
+          console.log('[Analyze] Sending Image Edit request...')
           const res = await fetch('https://api.openai.com/v1/images/edits', {
             method: 'POST',
             headers: { Authorization: `Bearer ${apiKey}` },
             signal: controller.signal,
             body: formData,
           })
-          if (!res.ok) return null
+
+          if (!res.ok) {
+            const errorBody = await res.text()
+            console.error(`[Analyze] Image API Error (${res.status}):`, errorBody)
+            // If it's a 429 or credit issue, we'll see it here
+            return { error: errorBody, status: res.status }
+          }
+
           const data = await res.json() as any
           const imageData = data.data?.[0]
           return imageData?.b64_json ? `data:image/png;base64,${imageData.b64_json}` : imageData?.url || null
         } catch (e) {
-          console.error('[Analyze] Image Error:', e)
-          return null
+          console.error('[Analyze] Image Exception:', e)
+          return { error: (e as Error).message }
         }
       })()
 
-      const [textData, styleImage] = await Promise.all([textPromise, imagePromise])
+      const [textData, styleImageData] = await Promise.all([textPromise, imagePromise])
       clearTimeout(abortTimer)
 
       const report = textData.choices?.[0]?.message?.content
       if (!report) throw new Error(err.reportFailed)
 
+      // Check if image generation returned an error object instead of a string
+      const styleImage = typeof styleImageData === 'string' ? styleImageData : null
+      const imageError = typeof styleImageData === 'object' ? styleImageData : null
+
       if (user_email && resendKey) {
         sendReportEmail(user_email, report, locale, resendKey, styleImage || undefined).catch(e => console.error('Email failed:', e))
       }
 
-      return new Response(JSON.stringify({ report, styleImage }), { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } })
+      return new Response(JSON.stringify({ 
+        report, 
+        styleImage, 
+        imageError // 디버깅을 위해 에러 정보 포함
+      }), { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } })
+
     } catch (unexpectedErr) {
       clearTimeout(abortTimer)
       return new Response(JSON.stringify({ error: (unexpectedErr as Error).message }), { status: 500, headers: corsHeaders })
