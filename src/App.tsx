@@ -305,15 +305,6 @@ function App() {
     }
   }, [photo, height, weight, gender, locale, t, runAnalysis])
 
-  // Called after auth succeeds and pendingSubmit fires (only used as fallback)
-  const handleSubmitAfterAuth = useCallback(() => {
-    if (!photo || !height || !weight || !gender) return
-    if (paid || hasSubscription) {
-      runAnalysis()
-    } else {
-      startCheckoutFlow()
-    }
-  }, [photo, height, weight, gender, paid, hasSubscription, runAnalysis, startCheckoutFlow])
 
   const handleSubmit = async () => {
     if (!photo || !height || !weight || !gender) return
@@ -405,7 +396,7 @@ function App() {
 
   const handleReset = () => {
     setReport(null)
-    setStyleImages([])
+    setStyleImage(null)
     setError(null)
     setPaid(false)
     setCheckoutId(null)
@@ -415,7 +406,7 @@ function App() {
 
   const handleGoHome = () => {
     setReport(null)
-    setStyleImages([])
+    setStyleImage(null)
     setError(null)
     setPhoto(null)
     setHeight('')
