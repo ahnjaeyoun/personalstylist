@@ -256,11 +256,13 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     }
 
     // ─── Text report generation only ─────────────────────────────────────────
+    console.log('[Analyze] Starting OpenAI request...')
     const controller = new AbortController()
     const abortTimer = setTimeout(() => controller.abort(), 28000)
 
     let reportResponse: Response
     try {
+      console.log(`[Analyze] Sending request to OpenAI. Image length: ${photo.length}`)
       reportResponse = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -288,22 +290,22 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       clearTimeout(abortTimer)
     } catch (fetchErr) {
       clearTimeout(abortTimer)
-      console.error('OpenAI fetch error:', fetchErr)
+      console.error('[Analyze] OpenAI fetch error:', fetchErr)
       // quick=true: skip retries to stay within Cloudflare's 30s wall-clock limit
-      await triggerRefund('OpenAI fetch timeout or error', true)
+      // await triggerRefund('OpenAI fetch timeout or error', true)
       return new Response(
-        JSON.stringify({ error: err.analysisFailed, refunded: !!checkout_id }),
-        { status: 502, headers: { "Content-Type": "application/json", ...corsHeaders } }
+        JSON.stringify({ error: `Analysis failed: ${(fetchErr as Error).message}`, refunded: !!checkout_id }),
+        { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
       )
     }
 
     if (!reportResponse.ok) {
       const errorData = await reportResponse.text()
-      console.error('OpenAI API error:', errorData)
-      await triggerRefund(`OpenAI report API error: ${reportResponse.status}`)
+      console.error('[Analyze] OpenAI API error:', reportResponse.status, errorData)
+      // await triggerRefund(`OpenAI report API error: ${reportResponse.status}`)
       return new Response(
-        JSON.stringify({ error: err.analysisFailed, refunded: true }),
-        { status: 502, headers: { "Content-Type": "application/json", ...corsHeaders } }
+        JSON.stringify({ error: `OpenAI API Error: ${reportResponse.status} - ${errorData}`, refunded: true }),
+        { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
       )
     }
 
@@ -316,7 +318,8 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     const report = data.choices?.[0]?.message?.content
 
     if (!report) {
-      await triggerRefund('Report text extraction failed')
+      console.error('[Analyze] Report text extraction failed. Data:', JSON.stringify(data))
+      // await triggerRefund('Report text extraction failed')
       return new Response(
         JSON.stringify({ error: err.reportFailed, refunded: true }),
         { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
