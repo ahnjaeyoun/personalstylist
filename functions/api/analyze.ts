@@ -243,9 +243,10 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     const userMsg = buildUserMessage(locale, gender, height, weight)
 
     // ─── Helper: trigger refund on failure ───────────────────────────────────
-    const triggerRefund = async (reason: string) => {
+    // quick=true: try only once (no retries), used when we're near the timeout limit
+    const triggerRefund = async (reason: string, quick = false) => {
       if (!checkout_id || !polarToken || checkoutAmount <= 0) return
-      const orderId = await findOrderIdByCheckout(checkout_id, polarToken)
+      const orderId = await findOrderIdByCheckout(checkout_id, polarToken, quick ? 1 : 4)
       if (orderId) {
         const ok = await issueRefund(orderId, checkoutAmount, polarToken, reason)
         console.log(`Refund ${ok ? 'succeeded' : 'failed'} for order ${orderId}`)
@@ -255,6 +256,9 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     }
 
     // ─── Text report generation only ─────────────────────────────────────────
+    const controller = new AbortController()
+    const abortTimer = setTimeout(() => controller.abort(), 22000)
+
     let reportResponse: Response
     try {
       reportResponse = await fetch('https://api.openai.com/v1/responses', {
@@ -263,7 +267,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${apiKey}`,
         },
-        signal: AbortSignal.timeout(25000),
+        signal: controller.signal,
         body: JSON.stringify({
           model: 'gpt-5-mini',
           input: [
@@ -281,10 +285,12 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
           ],
         }),
       })
+      clearTimeout(abortTimer)
     } catch (fetchErr) {
-      const isTimeout = (fetchErr as Error)?.name === 'TimeoutError' || (fetchErr as Error)?.name === 'AbortError'
+      clearTimeout(abortTimer)
       console.error('OpenAI fetch error:', fetchErr)
-      await triggerRefund(`OpenAI fetch ${isTimeout ? 'timeout' : 'error'}`)
+      // quick=true: skip retries to stay within Cloudflare's 30s wall-clock limit
+      await triggerRefund('OpenAI fetch timeout or error', true)
       return new Response(
         JSON.stringify({ error: err.analysisFailed, refunded: !!checkout_id }),
         { status: 502, headers: { "Content-Type": "application/json", ...corsHeaders } }

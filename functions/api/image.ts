@@ -68,12 +68,24 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     formData.append('moderation', 'auto')
     formData.append('input_fidelity', 'high')
 
-    const imgResponse = await fetch('https://api.openai.com/v1/images/edits', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${apiKey}` },
-      signal: AbortSignal.timeout(25000),
-      body: formData,
-    })
+    const imgController = new AbortController()
+    const imgAbortTimer = setTimeout(() => imgController.abort(), 25000)
+    let imgResponse: Response
+    try {
+      imgResponse = await fetch('https://api.openai.com/v1/images/edits', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${apiKey}` },
+        signal: imgController.signal,
+        body: formData,
+      })
+      clearTimeout(imgAbortTimer)
+    } catch {
+      clearTimeout(imgAbortTimer)
+      return new Response(
+        JSON.stringify({ styleImage: null }),
+        { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      )
+    }
 
     if (!imgResponse.ok) {
       const errText = await imgResponse.text()
