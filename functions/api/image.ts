@@ -71,6 +71,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     const imgResponse = await fetch('https://api.openai.com/v1/images/edits', {
       method: 'POST',
       headers: { Authorization: `Bearer ${apiKey}` },
+      signal: AbortSignal.timeout(25000),
       body: formData,
     })
 

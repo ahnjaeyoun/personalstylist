@@ -255,29 +255,41 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     }
 
     // ─── Text report generation only ─────────────────────────────────────────
-    const reportResponse = await fetch('https://api.openai.com/v1/responses', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-5-mini',
-        input: [
-          {
-            role: 'developer',
-            content: [{ type: 'input_text', text: prompt }],
-          },
-          {
-            role: 'user',
-            content: [
-              { type: 'input_text', text: userMsg },
-              { type: 'input_image', image_url: photo },
-            ],
-          },
-        ],
-      }),
-    })
+    let reportResponse: Response
+    try {
+      reportResponse = await fetch('https://api.openai.com/v1/responses', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        signal: AbortSignal.timeout(25000),
+        body: JSON.stringify({
+          model: 'gpt-5-mini',
+          input: [
+            {
+              role: 'developer',
+              content: [{ type: 'input_text', text: prompt }],
+            },
+            {
+              role: 'user',
+              content: [
+                { type: 'input_text', text: userMsg },
+                { type: 'input_image', image_url: photo },
+              ],
+            },
+          ],
+        }),
+      })
+    } catch (fetchErr) {
+      const isTimeout = (fetchErr as Error)?.name === 'TimeoutError' || (fetchErr as Error)?.name === 'AbortError'
+      console.error('OpenAI fetch error:', fetchErr)
+      await triggerRefund(`OpenAI fetch ${isTimeout ? 'timeout' : 'error'}`)
+      return new Response(
+        JSON.stringify({ error: err.analysisFailed, refunded: !!checkout_id }),
+        { status: 502, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      )
+    }
 
     if (!reportResponse.ok) {
       const errorData = await reportResponse.text()
