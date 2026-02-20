@@ -260,7 +260,7 @@ function localApiPlugin(): Plugin {
             try {
               const formData = new FormData()
               formData.append('image', photoBlob, photoFilename)
-              formData.append('model', 'gpt-image-1')
+              formData.append('model', 'gpt-image-1.5')
               formData.append('prompt', styleImagePrompt)
               formData.append('n', '1')
               formData.append('size', '1024x1024')
@@ -291,16 +291,18 @@ function localApiPlugin(): Plugin {
           }
 
           // ─── Text report ─────────────────────────────────────────────────
-          const reportPromise = fetch('https://api.openai.com/v1/responses', {
+          const reportPromise = fetch('https://api.openai.com/v1/chat/completions', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
             body: JSON.stringify({
-              model: 'gpt-4o',
-              input: [
-                { role: 'developer', content: [{ type: 'input_text', text: prompt }] },
-                { role: 'user', content: [{ type: 'input_text', text: userMsg }, { type: 'input_image', image_url: photo }] },
+              model: 'gpt-5-mini',
+              messages: [
+                { role: 'system', content: prompt },
+                { role: 'user', content: [
+                  { type: 'text', text: userMsg },
+                  { type: 'image_url', image_url: { url: photo, detail: 'high' } },
+                ]},
               ],
-              store: true,
             }),
           })
 
@@ -330,12 +332,10 @@ function localApiPlugin(): Plugin {
           }
 
           const data = await response.json() as {
-            output: Array<{ type: string; content?: Array<{ type: string; text: string }> }>
+            choices: Array<{ message: { content: string } }>
           }
 
-          const messageOutput = data.output?.find((item: { type: string }) => item.type === 'message')
-          const textContent = messageOutput?.content?.find((c: { type: string }) => c.type === 'output_text')
-          const report = textContent?.text
+          const report = data.choices?.[0]?.message?.content
 
           if (!report) {
             await triggerRefund('Report text extraction failed')
