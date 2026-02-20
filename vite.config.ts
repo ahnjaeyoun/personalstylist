@@ -260,7 +260,7 @@ function localApiPlugin(): Plugin {
             try {
               const formData = new FormData()
               formData.append('image', photoBlob, photoFilename)
-              formData.append('model', 'gpt-image-1.5')
+              formData.append('model', 'gpt-image-1')
               formData.append('prompt', styleImagePrompt)
               formData.append('n', '1')
               formData.append('size', '1024x1024')
@@ -295,12 +295,11 @@ function localApiPlugin(): Plugin {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
             body: JSON.stringify({
-              model: 'gpt-5-mini',
+              model: 'gpt-4o',
               input: [
                 { role: 'developer', content: [{ type: 'input_text', text: prompt }] },
                 { role: 'user', content: [{ type: 'input_text', text: userMsg }, { type: 'input_image', image_url: photo }] },
               ],
-              reasoning: {},
               store: true,
             }),
           })
