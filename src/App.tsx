@@ -150,12 +150,38 @@ function App() {
     fileInputRef.current?.click()
   }
 
+  const compressImage = (dataUrl: string): Promise<string> => {
+    return new Promise((resolve) => {
+      const img = new Image()
+      img.onload = () => {
+        const MAX_PX = 1500
+        let { width, height } = img
+        if (width > MAX_PX || height > MAX_PX) {
+          if (width > height) {
+            height = Math.round((height * MAX_PX) / width)
+            width = MAX_PX
+          } else {
+            width = Math.round((width * MAX_PX) / height)
+            height = MAX_PX
+          }
+        }
+        const canvas = document.createElement('canvas')
+        canvas.width = width
+        canvas.height = height
+        canvas.getContext('2d')!.drawImage(img, 0, 0, width, height)
+        resolve(canvas.toDataURL('image/jpeg', 0.85))
+      }
+      img.src = dataUrl
+    })
+  }
+
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) {
       const reader = new FileReader()
-      reader.onload = (ev) => {
-        setPhoto(ev.target?.result as string)
+      reader.onload = async (ev) => {
+        const compressed = await compressImage(ev.target?.result as string)
+        setPhoto(compressed)
       }
       reader.readAsDataURL(file)
     }
