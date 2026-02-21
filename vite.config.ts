@@ -507,5 +507,15 @@ export default defineConfig(({ mode }) => {
     server: {
       host: '0.0.0.0',
     },
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            'vendor-react': ['react', 'react-dom'],
+            'vendor-supabase': ['@supabase/supabase-js'],
+          },
+        },
+      },
+    },
   }
 })

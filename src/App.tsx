@@ -1,13 +1,13 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
-import { PolarEmbedCheckout } from '@polar-sh/checkout/embed'
-import html2canvas from 'html2canvas'
+import { useState, useRef, useEffect, useCallback, lazy, Suspense } from 'react'
 import { useLocale } from './i18n'
 import { useAuth } from './hooks/useAuth'
-import LoginPage from './pages/LoginPage'
-import SignupPage from './pages/SignupPage'
-import MyPage from './pages/MyPage'
-import ResetPasswordPage from './pages/ResetPasswordPage'
 import './App.css'
+
+// Code-split page components — loaded only when first navigated to
+const LoginPage = lazy(() => import('./pages/LoginPage'))
+const SignupPage = lazy(() => import('./pages/SignupPage'))
+const MyPage = lazy(() => import('./pages/MyPage'))
+const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage'))
 
 type Page = 'home' | 'form' | 'report' | 'login' | 'signup' | 'mypage' | 'reset-password'
 
@@ -51,7 +51,8 @@ function App() {
     return !sessionStorage.getItem('demo-banner-dismissed')
   })
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const checkoutRef = useRef<Awaited<ReturnType<typeof PolarEmbedCheckout.create>> | null>(null)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const checkoutRef = useRef<any>(null)
   const reportRef = useRef<HTMLDivElement>(null)
   const closeBtnRef = useRef<HTMLButtonElement | null>(null)
 
@@ -276,7 +277,8 @@ const runAnalysis = useCallback(async () => {
       setLoading(false)
       if (checkoutData.id) setCheckoutId(checkoutData.id)
 
-      // 2. Open embedded checkout
+      // 2. Open embedded checkout (dynamically imported to keep initial bundle lean)
+      const { PolarEmbedCheckout } = await import('@polar-sh/checkout/embed')
       const checkout = await PolarEmbedCheckout.create(checkoutData.url, {
         theme: 'dark',
         onLoaded: () => {
@@ -383,6 +385,7 @@ const runAnalysis = useCallback(async () => {
 
   const captureReport = async (): Promise<Blob | null> => {
     if (!reportRef.current) return null
+    const { default: html2canvas } = await import('html2canvas')
     const canvas = await html2canvas(reportRef.current, {
       backgroundColor: '#131022',
       scale: 2,
@@ -510,61 +513,69 @@ const runAnalysis = useCallback(async () => {
   // ─── RESET PASSWORD ───
   if (page === 'reset-password') {
     return (
-      <ResetPasswordPage
-        t={t}
-        langToggle={langToggle}
-        onDone={handleGoHome}
-        onClearRecovery={clearRecovery}
-      />
+      <Suspense fallback={<div className="app-shell" />}>
+        <ResetPasswordPage
+          t={t}
+          langToggle={langToggle}
+          onDone={handleGoHome}
+          onClearRecovery={clearRecovery}
+        />
+      </Suspense>
     )
   }
 
   // ─── MYPAGE ───
   if (page === 'mypage' && user) {
     return (
-      <MyPage
-        t={t}
-        langToggle={langToggle}
-        user={user}
-        hasSubscription={hasSubscription}
-        onGoBack={() => setPage('home')}
-        onSignOut={handleSignOut}
-        onSubscriptionCancelled={() => setHasSubscription(false)}
-      />
+      <Suspense fallback={<div className="app-shell" />}>
+        <MyPage
+          t={t}
+          langToggle={langToggle}
+          user={user}
+          hasSubscription={hasSubscription}
+          onGoBack={() => setPage('home')}
+          onSignOut={handleSignOut}
+          onSubscriptionCancelled={() => setHasSubscription(false)}
+        />
+      </Suspense>
     )
   }
 
   // ─── LOGIN ───
   if (page === 'login') {
     return (
-      <LoginPage
-        t={t}
-        langToggle={langToggle}
-        onLogin={signInWithEmail}
-        onGoogleLogin={signInWithGoogle}
-        onKakaoLogin={signInWithKakao}
-        onGoToSignup={() => setPage('signup')}
-        onGoBack={() => setPage(pendingSubmit ? 'form' : 'home')}
-        showAuthRequired={showAuthRequired}
-        onSaveFormBeforeOAuth={saveFormBeforeOAuth}
-        onResetPassword={resetPasswordForEmail}
-      />
+      <Suspense fallback={<div className="app-shell" />}>
+        <LoginPage
+          t={t}
+          langToggle={langToggle}
+          onLogin={signInWithEmail}
+          onGoogleLogin={signInWithGoogle}
+          onKakaoLogin={signInWithKakao}
+          onGoToSignup={() => setPage('signup')}
+          onGoBack={() => setPage(pendingSubmit ? 'form' : 'home')}
+          showAuthRequired={showAuthRequired}
+          onSaveFormBeforeOAuth={saveFormBeforeOAuth}
+          onResetPassword={resetPasswordForEmail}
+        />
+      </Suspense>
     )
   }
 
   // ─── SIGNUP ───
   if (page === 'signup') {
     return (
-      <SignupPage
-        t={t}
-        langToggle={langToggle}
-        onSignup={signUpWithEmail}
-        onGoogleLogin={signInWithGoogle}
-        onKakaoLogin={signInWithKakao}
-        onGoToLogin={() => setPage('login')}
-        onGoBack={() => setPage(pendingSubmit ? 'form' : 'home')}
-        onSaveFormBeforeOAuth={saveFormBeforeOAuth}
-      />
+      <Suspense fallback={<div className="app-shell" />}>
+        <SignupPage
+          t={t}
+          langToggle={langToggle}
+          onSignup={signUpWithEmail}
+          onGoogleLogin={signInWithGoogle}
+          onKakaoLogin={signInWithKakao}
+          onGoToLogin={() => setPage('login')}
+          onGoBack={() => setPage(pendingSubmit ? 'form' : 'home')}
+          onSaveFormBeforeOAuth={saveFormBeforeOAuth}
+        />
+      </Suspense>
     )
   }
 
@@ -605,6 +616,7 @@ const runAnalysis = useCallback(async () => {
             <img
               src="https://lh3.googleusercontent.com/aida-public/AB6AXuA-fiwRa5-tCfjbVjLI5-JQtHfi40eZakC0FUExVdkxxV3nXjAcbDMRmQAWVi9q-2YxJkPMVVja-WV9uU1p6ebDpUpSfZav4BEDbWhhUrLa4ri6HF_pPMlzmwVjJNRtBgF567WHwkKZ41NzbfFoV-VGgzLrgNUF9EKrVlcccUd_CNJBTFXPeDXX8gXpzwxuULDA0EThiDiUgWk0FFkK9qMycHsPiFNR4ZtBvKEn2bb4Y8QMqY4ZWnJMKUI9cLc4A3XQC9WoHae-OZCT"
               alt="High fashion model"
+              fetchPriority="high"
             />
             <div className="hero-overlay" />
           </div>
@@ -679,12 +691,14 @@ const runAnalysis = useCallback(async () => {
                 <img
                   src="https://lh3.googleusercontent.com/aida-public/AB6AXuAYI7j-EeOyCrvgcZvfnq9qsfYK5kZfteGOM17HwZoeKHZfsAvotEi-YKyr4kAEF-H6AOQ6Scw22oHlR0KqktTmsnp_0jWYq1QLJmDbNW5_QhOh6y4prFivL_XwGcFaFGKnT0Uo7pB_FvF_hNRCWXBJW0UV1tPqP52zGZRiWYhkpu6ee19V1WRux0Zs1SY5EdEeI0mHufL4CpTLGOtUGlOLoUvNriytLvHUmlM8JcvA7MIVA4bSMc9s98pMu_MbzuVfJpC3msM7E0Pc"
                   alt="Minimalist street style"
+                  loading="lazy"
                 />
               </div>
               <div className="gallery-item gallery-short">
                 <img
                   src="https://lh3.googleusercontent.com/aida-public/AB6AXuB_OwgVmGf8vN2ie_mIgxpJ3Mm7JGqaBziCCcH3Zq-TIOHUjJoH6vC3GfbLmyeBfInP8iA-N6CtnRGtOMliK_Kj8XVdedVgNkPI-ul6zYhouSJtSr2YK_d3CaBWaZinfmJ50nX37A94Gfn0aW9uAZ1ApO5IzsCSmbQvyK8eU9F4AT9aSRtneq0gW_6FjAoNWz5XI5W5iIoCe-cE-VzwEzW0FHtzRMMVVcBuXjIGgath6UCKrUh2qvQKTtOvv2iE-8OTGhTxLTYZdu3-"
                   alt="Fashion detail"
+                  loading="lazy"
                 />
               </div>
             </div>
@@ -693,12 +707,14 @@ const runAnalysis = useCallback(async () => {
                 <img
                   src="https://lh3.googleusercontent.com/aida-public/AB6AXuAPQdj00w1TIqnwjHIuV5ESdVkOlFIhhpZDp-FGeRHn5zZ8wDsaJruAfK2t2ymDRwzGGQUDGkX3VJhiAAaz4o16qwcSgnfgx8DSCTqMrVfccRt9d6j7MNB-D-gj-xzdtgfBSux3KDXa4df3cR87k4CKC8z5H881WS2ei0sDtEoq46gZ0ClwohxUEVjfIkOC4_2sNnwBFHO_xw70qJGKloXV3GBSWsASyES-0a9S4JBzsMX56pbFiDCD3twM6kTemwO4cUTDgvQ99Kur"
                   alt="Sophisticated evening wear"
+                  loading="lazy"
                 />
               </div>
               <div className="gallery-item gallery-tall">
                 <img
                   src="https://lh3.googleusercontent.com/aida-public/AB6AXuBx2ZycIOHUoBR79OG3WzOMgCCZxQV-6xNqrY6K4YHHYInk39gxiVYy3ObJvwpGSdqGWJEh4QIyc_p6ZNrA4bjiZRqcOWvqbX_2z7kep62CABj6sJEQrG3AjsTGXpOZK0uMjHuwAkNlx3TacT-tj_a6SDLr4XgR1bxfZvZyrdDEt6ba7uACeWmQpUBTfWe_Tw-cv8iIpKBzDyiQH4WNzuYf6MpO0ToKXrbRswZBuhs22v1b1sL4ADko-MX0IX3jHkLm8-W45CV3z4SV"
                   alt="Modern minimalist aesthetic"
+                  loading="lazy"
                 />
               </div>
             </div>
