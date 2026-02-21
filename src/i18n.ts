@@ -180,6 +180,22 @@ const translations = {
     myPageDeletingAccount: 'Deleting...',
     myPageDeleteCancel: 'Cancel',
     myPageDeleteError: 'Account deletion failed. Please contact support.',
+
+    // Subscription management
+    myPageSubscriptionSection: 'Subscription',
+    myPageSubscriptionActive: 'Active',
+    myPageSubscriptionCanceling: 'Cancels at period end',
+    myPageSubscriptionNone: 'No active subscription',
+    myPageSubscriptionActiveDesc: 'Your subscription is active. You have unlimited access to style analysis.',
+    myPageSubscriptionCancelingDesc: 'Your subscription is set to cancel. Access continues until the end of the billing period.',
+    myPageCancelSubscription: 'Cancel Subscription',
+    myPageCancelSubscriptionConfirmTitle: 'Cancel Subscription?',
+    myPageCancelSubscriptionConfirmText: 'Your subscription will remain active until the end of the current billing period. After that, you will lose access to style analysis.',
+    myPageCancelSubscriptionConfirmBtn: 'Yes, Cancel',
+    myPageCancellingSubscription: 'Cancelling...',
+    myPageKeepSubscription: 'Keep Subscription',
+    myPageCancelSubscriptionSuccess: 'Subscription cancelled. You can continue using the service until the end of the billing period.',
+    myPageCancelSubscriptionError: 'Failed to cancel subscription. Please try again.',
   },
   ko: {
     // Demo banner
@@ -327,6 +343,22 @@ const translations = {
     myPageDeletingAccount: '탈퇴 처리 중...',
     myPageDeleteCancel: '취소',
     myPageDeleteError: '계정 탈퇴에 실패했습니다. 고객 지원에 문의해 주세요.',
+
+    // Subscription management
+    myPageSubscriptionSection: '구독 관리',
+    myPageSubscriptionActive: '구독 중',
+    myPageSubscriptionCanceling: '기간 종료 후 해지 예정',
+    myPageSubscriptionNone: '활성 구독 없음',
+    myPageSubscriptionActiveDesc: '구독이 활성 상태입니다. 스타일 분석을 무제한으로 이용할 수 있습니다.',
+    myPageSubscriptionCancelingDesc: '구독이 해지 예정입니다. 현재 결제 기간 종료 시까지 이용할 수 있습니다.',
+    myPageCancelSubscription: '구독 취소',
+    myPageCancelSubscriptionConfirmTitle: '구독을 취소할까요?',
+    myPageCancelSubscriptionConfirmText: '현재 결제 기간이 끝날 때까지 서비스를 이용할 수 있습니다. 이후에는 스타일 분석 이용이 불가합니다.',
+    myPageCancelSubscriptionConfirmBtn: '네, 취소할게요',
+    myPageCancellingSubscription: '취소 중...',
+    myPageKeepSubscription: '구독 유지',
+    myPageCancelSubscriptionSuccess: '구독이 취소되었습니다. 결제 기간 종료 시까지 서비스를 계속 이용할 수 있습니다.',
+    myPageCancelSubscriptionError: '구독 취소에 실패했습니다. 다시 시도해 주세요.',
   },
 } as const satisfies Record<Locale, Record<string, string>>
 

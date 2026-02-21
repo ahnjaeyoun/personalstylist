@@ -6,11 +6,13 @@ interface MyPageProps {
   t: Record<string, string>
   langToggle: React.ReactNode
   user: User
+  hasSubscription: boolean
   onGoBack: () => void
   onSignOut: () => void
+  onSubscriptionCancelled: () => void
 }
 
-export default function MyPage({ t, langToggle, user, onGoBack, onSignOut }: MyPageProps) {
+export default function MyPage({ t, langToggle, user, hasSubscription, onGoBack, onSignOut, onSubscriptionCancelled }: MyPageProps) {
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [pwError, setPwError] = useState<string | null>(null)
@@ -20,6 +22,12 @@ export default function MyPage({ t, langToggle, user, onGoBack, onSignOut }: MyP
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deleteLoading, setDeleteLoading] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
+
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false)
+  const [cancelLoading, setCancelLoading] = useState(false)
+  const [cancelError, setCancelError] = useState<string | null>(null)
+  const [cancelSuccess, setCancelSuccess] = useState(false)
+  const [isCancelling, setIsCancelling] = useState(false)
 
   const provider = (user.app_metadata?.provider ?? 'email') as string
   const isEmailUser = provider === 'email'
@@ -81,6 +89,32 @@ export default function MyPage({ t, langToggle, user, onGoBack, onSignOut }: MyP
     }
   }
 
+  const handleCancelSubscription = async () => {
+    setCancelLoading(true)
+    setCancelError(null)
+
+    try {
+      const res = await fetch('/api/cancel-subscription', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: user.email }),
+      })
+
+      if (!res.ok) {
+        setCancelError(t.myPageCancelSubscriptionError)
+      } else {
+        setCancelSuccess(true)
+        setIsCancelling(true)
+        setShowCancelConfirm(false)
+        onSubscriptionCancelled()
+      }
+    } catch {
+      setCancelError(t.myPageCancelSubscriptionError)
+    } finally {
+      setCancelLoading(false)
+    }
+  }
+
   return (
     <div className="app-shell">
       <header className="nav-header glass-nav">
@@ -126,6 +160,48 @@ export default function MyPage({ t, langToggle, user, onGoBack, onSignOut }: MyP
             <span className="mypage-info-label">{t.myPageJoined}</span>
             <span className="mypage-info-value">{joinedDate}</span>
           </div>
+        </div>
+
+        {/* ─── 구독 관리 ─── */}
+        <div className="mypage-section-title">
+          <span className="material-icons mypage-section-icon">workspace_premium</span>
+          {t.myPageSubscriptionSection}
+        </div>
+
+        <div className={`form-card mypage-subscription-card ${hasSubscription ? (isCancelling ? 'mypage-subscription-canceling' : 'mypage-subscription-active') : 'mypage-subscription-none'}`}>
+          <div className="mypage-subscription-header">
+            <span className={`mypage-subscription-badge ${hasSubscription ? (isCancelling ? 'badge-canceling' : 'badge-active') : 'badge-none'}`}>
+              <span className="material-icons">
+                {hasSubscription ? (isCancelling ? 'schedule' : 'check_circle') : 'radio_button_unchecked'}
+              </span>
+              {hasSubscription ? (isCancelling ? t.myPageSubscriptionCanceling : t.myPageSubscriptionActive) : t.myPageSubscriptionNone}
+            </span>
+          </div>
+          {hasSubscription && (
+            <p className="mypage-subscription-desc">
+              {isCancelling ? t.myPageSubscriptionCancelingDesc : t.myPageSubscriptionActiveDesc}
+            </p>
+          )}
+
+          {cancelSuccess && (
+            <div className="mypage-success-message">
+              <span className="material-icons">check_circle</span>
+              {t.myPageCancelSubscriptionSuccess}
+            </div>
+          )}
+          {cancelError && !showCancelConfirm && (
+            <div className="error-message">{cancelError}</div>
+          )}
+
+          {hasSubscription && !isCancelling && (
+            <button
+              className="btn-outline-danger"
+              onClick={() => { setCancelError(null); setShowCancelConfirm(true) }}
+            >
+              <span className="material-icons btn-icon">cancel</span>
+              {t.myPageCancelSubscription}
+            </button>
+          )}
         </div>
 
         {/* ─── 비밀번호 변경 ─── */}
@@ -212,6 +288,43 @@ export default function MyPage({ t, langToggle, user, onGoBack, onSignOut }: MyP
           {t.logoutBtn}
         </button>
       </div>
+
+      {/* ─── 구독 취소 확인 모달 ─── */}
+      {showCancelConfirm && (
+        <div className="mypage-modal-backdrop" onClick={() => setShowCancelConfirm(false)}>
+          <div className="mypage-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="mypage-modal-icon mypage-modal-icon-warning">
+              <span className="material-icons">cancel</span>
+            </div>
+            <h3 className="mypage-modal-title">{t.myPageCancelSubscriptionConfirmTitle}</h3>
+            <p className="mypage-modal-text">{t.myPageCancelSubscriptionConfirmText}</p>
+
+            {cancelError && <div className="error-message">{cancelError}</div>}
+
+            <button
+              className="btn-danger"
+              onClick={handleCancelSubscription}
+              disabled={cancelLoading}
+            >
+              {cancelLoading ? (
+                <span className="loading-wrapper">
+                  <span className="spinner" />
+                  {t.myPageCancellingSubscription}
+                </span>
+              ) : (
+                t.myPageCancelSubscriptionConfirmBtn
+              )}
+            </button>
+            <button
+              className="btn-secondary"
+              onClick={() => { setShowCancelConfirm(false); setCancelError(null) }}
+              disabled={cancelLoading}
+            >
+              {t.myPageKeepSubscription}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ─── 탈퇴 확인 모달 ─── */}
       {showDeleteConfirm && (

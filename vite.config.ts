@@ -303,6 +303,111 @@ function localApiPlugin(): Plugin {
         }
       })
 
+      // ─── /api/cancel-subscription ───
+      server.middlewares.use('/api/cancel-subscription', async (req, res) => {
+        if (req.method === 'OPTIONS') {
+          res.writeHead(204, corsHeaders())
+          res.end()
+          return
+        }
+
+        if (req.method !== 'POST') {
+          res.writeHead(405, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ error: 'Method not allowed' }))
+          return
+        }
+
+        try {
+          const body = await readBody(req)
+          const { email } = JSON.parse(body)
+
+          if (!email) {
+            res.writeHead(400, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ error: 'Email required' }))
+            return
+          }
+
+          const polarToken = process.env.POLAR_ACCESS_TOKEN
+          if (!polarToken) {
+            res.writeHead(503, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ error: 'Service unavailable' }))
+            return
+          }
+
+          const POLAR_API = 'https://sandbox-api.polar.sh'
+
+          // Step 1: Find customer by email
+          const customersRes = await fetch(
+            `${POLAR_API}/v1/customers/?email=${encodeURIComponent(email)}&limit=1`,
+            { headers: { Authorization: `Bearer ${polarToken}` } }
+          )
+
+          if (!customersRes.ok) {
+            res.writeHead(500, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ error: 'Failed to find customer' }))
+            return
+          }
+
+          const customersData = await customersRes.json() as { items?: Array<{ id: string }> }
+          const customer = customersData.items?.[0]
+
+          if (!customer) {
+            res.writeHead(404, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ error: 'Customer not found' }))
+            return
+          }
+
+          // Step 2: Get customer state
+          const stateRes = await fetch(
+            `${POLAR_API}/v1/customers/${customer.id}/state`,
+            { headers: { Authorization: `Bearer ${polarToken}` } }
+          )
+
+          if (!stateRes.ok) {
+            res.writeHead(500, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ error: 'Failed to get subscription' }))
+            return
+          }
+
+          const state = await stateRes.json() as {
+            active_subscriptions?: Array<{ id: string; status: string }>
+          }
+
+          const subscription = state.active_subscriptions?.[0]
+          if (!subscription) {
+            res.writeHead(404, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ error: 'No active subscription' }))
+            return
+          }
+
+          // Step 3: Cancel at period end
+          const cancelRes = await fetch(
+            `${POLAR_API}/v1/subscriptions/${subscription.id}`,
+            {
+              method: 'PATCH',
+              headers: {
+                Authorization: `Bearer ${polarToken}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ cancel_at_period_end: true }),
+            }
+          )
+
+          if (!cancelRes.ok) {
+            res.writeHead(500, { 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ error: 'Failed to cancel subscription' }))
+            return
+          }
+
+          res.writeHead(200, { 'Content-Type': 'application/json', ...corsHeaders() })
+          res.end(JSON.stringify({ success: true }))
+        } catch (e) {
+          console.error('Cancel subscription error:', e)
+          res.writeHead(500, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ error: 'Server error' }))
+        }
+      })
+
       // ─── /api/generate-image ───
       server.middlewares.use('/api/generate-image', async (req, res) => {
         if (req.method === 'OPTIONS') {

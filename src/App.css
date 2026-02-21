@@ -1452,6 +1452,113 @@
   margin: 0;
 }
 
+/* ─── Subscription Card ─── */
+.mypage-subscription-card {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.mypage-subscription-active {
+  border-color: rgba(99, 210, 130, 0.25);
+  background: linear-gradient(135deg, rgba(99, 210, 130, 0.05) 0%, rgba(14, 12, 22, 0.95) 100%);
+}
+
+.mypage-subscription-canceling {
+  border-color: rgba(251, 191, 36, 0.25);
+  background: linear-gradient(135deg, rgba(251, 191, 36, 0.05) 0%, rgba(14, 12, 22, 0.95) 100%);
+}
+
+.mypage-subscription-none {
+  border-color: rgba(255, 255, 255, 0.06);
+}
+
+.mypage-subscription-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.mypage-subscription-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  padding: 4px 10px 4px 6px;
+  border-radius: 20px;
+  text-transform: uppercase;
+}
+
+.badge-active {
+  color: #4ade80;
+  background: rgba(74, 222, 128, 0.12);
+}
+
+.badge-active .material-icons {
+  font-size: 1rem;
+  color: #4ade80;
+}
+
+.badge-canceling {
+  color: #fbbf24;
+  background: rgba(251, 191, 36, 0.12);
+}
+
+.badge-canceling .material-icons {
+  font-size: 1rem;
+  color: #fbbf24;
+}
+
+.badge-none {
+  color: #64748b;
+  background: rgba(100, 116, 139, 0.1);
+}
+
+.badge-none .material-icons {
+  font-size: 1rem;
+  color: #64748b;
+}
+
+.mypage-subscription-desc {
+  font-size: 0.85rem;
+  color: #94a3b8;
+  line-height: 1.5;
+  margin-bottom: 16px;
+}
+
+.btn-outline-danger {
+  width: 100%;
+  padding: 12px 16px;
+  background: transparent;
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  border-radius: 12px;
+  color: #ef4444;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: background 0.2s ease, border-color 0.2s ease;
+  margin-top: 4px;
+}
+
+.btn-outline-danger:hover {
+  background: rgba(239, 68, 68, 0.08);
+  border-color: rgba(239, 68, 68, 0.6);
+}
+
+.btn-outline-danger .material-icons {
+  font-size: 1.1rem;
+}
+
+.mypage-modal-icon-warning .material-icons {
+  color: #fbbf24;
+}
+
+/* ─── Danger Zone ─── */
 .mypage-danger-card {
   border: 1px solid rgba(239, 68, 68, 0.15);
 }

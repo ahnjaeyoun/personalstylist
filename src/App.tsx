@@ -526,8 +526,10 @@ const runAnalysis = useCallback(async () => {
         t={t}
         langToggle={langToggle}
         user={user}
+        hasSubscription={hasSubscription}
         onGoBack={() => setPage('home')}
         onSignOut={handleSignOut}
+        onSubscriptionCancelled={() => setHasSubscription(false)}
       />
     )
   }
