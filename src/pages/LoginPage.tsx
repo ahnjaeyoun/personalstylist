@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { translateAuthError } from '../lib/authError'
 
 interface LoginPageProps {
   t: Record<string, string>
@@ -11,6 +12,7 @@ interface LoginPageProps {
   showAuthRequired: boolean
   onSaveFormBeforeOAuth: () => void
   onResetPassword: (email: string) => Promise<{ error: Error | null }>
+  onLoginSuccess: () => void
 }
 
 export default function LoginPage({
@@ -24,6 +26,7 @@ export default function LoginPage({
   showAuthRequired,
   onSaveFormBeforeOAuth,
   onResetPassword,
+  onLoginSuccess,
 }: LoginPageProps) {
   const [view, setView] = useState<'login' | 'forgot'>('login')
   const [email, setEmail] = useState('')
@@ -50,7 +53,9 @@ export default function LoginPage({
     setSubmitting(false)
 
     if (error) {
-      setError(error.message || t.errorAuthGeneric)
+      setError(translateAuthError(error.message, t))
+    } else {
+      onLoginSuccess()
     }
   }
 
@@ -59,7 +64,7 @@ export default function LoginPage({
     const fn = provider === 'google' ? onGoogleLogin : onKakaoLogin
     const { error } = await fn()
     if (error) {
-      setError(error.message || t.errorAuthGeneric)
+      setError(translateAuthError(error.message, t))
     }
   }
 
@@ -77,7 +82,7 @@ export default function LoginPage({
     setSubmitting(false)
 
     if (error) {
-      setError(error.message || t.errorAuthGeneric)
+      setError(translateAuthError(error.message, t))
     } else {
       setResetSent(true)
     }

@@ -20,6 +20,8 @@ function App() {
     isLoggedIn,
     loading: authLoading,
     isRecovery,
+    wasAutoLoggedOut,
+    clearAutoLogout,
     signUpWithEmail,
     signInWithEmail,
     signInWithGoogle,
@@ -103,6 +105,15 @@ function App() {
       sessionStorage.removeItem(FORM_STORAGE_KEY)
     }
   }, [])
+
+  // 자동 로그아웃 감지 → alert + 홈 이동
+  useEffect(() => {
+    if (wasAutoLoggedOut) {
+      clearAutoLogout()
+      setPage('home')
+      alert(t.autoLogoutMessage)
+    }
+  }, [wasAutoLoggedOut, clearAutoLogout, t.autoLogoutMessage])
 
   // Auto-submit after login when pendingSubmit is true
   useEffect(() => {
@@ -556,6 +567,10 @@ const runAnalysis = useCallback(async () => {
           showAuthRequired={showAuthRequired}
           onSaveFormBeforeOAuth={saveFormBeforeOAuth}
           onResetPassword={resetPasswordForEmail}
+          onLoginSuccess={() => {
+            alert(t.loginSuccess)
+            setPage('home')
+          }}
         />
       </Suspense>
     )

@@ -94,8 +94,9 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       const imagePromise = (async () => {
         try {
           const imageBlob = await base64ToBlob(photo)
+          const ext = imageBlob.type.includes('png') ? 'png' : imageBlob.type.includes('webp') ? 'webp' : 'jpg'
           const formData = new FormData()
-          formData.append('image', imageBlob, 'image.png') // Always name it .png
+          formData.append('image', imageBlob, `image.${ext}`)
           formData.append('prompt', stylePrompt)
           
           // Apply configs from _prompts.ts

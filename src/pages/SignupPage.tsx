@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { translateAuthError } from '../lib/authError'
 
 interface SignupPageProps {
   t: Record<string, string>
@@ -54,7 +55,7 @@ export default function SignupPage({
     setSubmitting(false)
 
     if (error) {
-      setError(error.message || t.errorAuthGeneric)
+      setError(translateAuthError(error.message, t))
     } else {
       setSuccess(true)
     }
@@ -65,7 +66,7 @@ export default function SignupPage({
     const fn = provider === 'google' ? onGoogleLogin : onKakaoLogin
     const { error } = await fn()
     if (error) {
-      setError(error.message || t.errorAuthGeneric)
+      setError(translateAuthError(error.message, t))
     }
   }
 

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { translateAuthError } from '../lib/authError'
 import type { User } from '@supabase/supabase-js'
 
 interface MyPageProps {
@@ -66,7 +67,7 @@ export default function MyPage({ t, langToggle, user, hasSubscription, onGoBack,
     setPwLoading(false)
 
     if (error) {
-      setPwError(error.message)
+      setPwError(translateAuthError(error.message, t))
     } else {
       setPwSuccess(true)
       setNewPassword('')

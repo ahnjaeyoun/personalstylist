@@ -147,7 +147,12 @@ const translations = {
     errorInvalidEmail: 'Please enter a valid email address.',
     errorPasswordTooShort: 'Password must be at least 8 characters.',
     errorPasswordWeak: 'Password must include uppercase, lowercase, number, and special character.',
+    loginSuccess: 'Login successful! Welcome back.',
+    autoLogoutMessage: 'You have been logged out due to 15 minutes of inactivity.',
     errorAuthGeneric: 'An authentication error occurred.',
+    errorInvalidCredentials: 'Incorrect email or password.',
+    errorEmailInUse: 'This email address is already registered.',
+    errorTokenExpired: 'The link has expired. Please request a new one.',
 
     // Errors (client-side)
     errorAnalysis: 'An error occurred during analysis.',
@@ -310,7 +315,12 @@ const translations = {
     errorInvalidEmail: '유효한 이메일 주소를 입력해주세요.',
     errorPasswordTooShort: '비밀번호는 8자 이상이어야 합니다.',
     errorPasswordWeak: '비밀번호에 대문자, 소문자, 숫자, 특수문자가 모두 포함되어야 합니다.',
+    loginSuccess: '로그인되었습니다! 환영합니다.',
+    autoLogoutMessage: '15분 동안 활동이 없어 자동 로그아웃되었습니다.',
     errorAuthGeneric: '인증 오류가 발생했습니다.',
+    errorInvalidCredentials: '이메일 또는 비밀번호가 올바르지 않습니다.',
+    errorEmailInUse: '이미 가입된 이메일 주소입니다.',
+    errorTokenExpired: '링크가 만료되었습니다. 다시 요청해주세요.',
 
     // Errors (client-side)
     errorAnalysis: '분석 중 오류가 발생했습니다.',

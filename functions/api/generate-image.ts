@@ -15,17 +15,17 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type",
 }
 
-async function base64ToBlob(base64: string): Promise<Blob> {
+async function base64ToBlob(base64: string): Promise<{ blob: Blob; ext: string }> {
   const base64Data = base64.includes(',') ? base64.split(',')[1] : base64
-  // Force image/png for OpenAI Edits API
-  const mime = 'image/png'
-  
+  const mime = base64.includes(',') ? (base64.match(/:(.*?);/)?.[1] || 'image/jpeg') : 'image/jpeg'
+  const ext = mime.includes('png') ? 'png' : mime.includes('webp') ? 'webp' : 'jpg'
+
   const binary = atob(base64Data)
   const array = new Uint8Array(binary.length)
   for (let i = 0; i < binary.length; i++) {
     array[i] = binary.charCodeAt(i)
   }
-  return new Blob([array], { type: mime })
+  return { blob: new Blob([array], { type: mime }), ext }
 }
 
 export const onRequestPost: PagesFunction<Env> = async (context) => {
@@ -41,9 +41,9 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       return new Response(JSON.stringify({ error: 'Missing photo' }), { status: 400, headers: corsHeaders })
     }
 
-    const imageBlob = await base64ToBlob(photo)
+    const { blob: imageBlob, ext } = await base64ToBlob(photo)
     const formData = new FormData()
-    formData.append('image', imageBlob, 'image.png')
+    formData.append('image', imageBlob, `image.${ext}`)
     formData.append('prompt', buildStylePrompt())
     
     // Copy config but maybe filter non-standard params if they cause 400s

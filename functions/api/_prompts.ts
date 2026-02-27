@@ -9,7 +9,6 @@ export const STYLE_IMAGE_CONFIG = {
   background: 'auto',
   moderation: 'auto',
   input_fidelity: 'high',
-  response_format: 'b64_json' as const,
 }
 
 export function buildStylePrompt(): string {

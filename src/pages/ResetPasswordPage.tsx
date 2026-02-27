@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { translateAuthError } from '../lib/authError'
 
 interface ResetPasswordPageProps {
   t: Record<string, string>
@@ -38,7 +39,7 @@ export default function ResetPasswordPage({
     setSubmitting(false)
 
     if (error) {
-      setError(error.message || t.errorAuthGeneric)
+      setError(translateAuthError(error.message, t))
     } else {
       setSuccess(true)
       onClearRecovery()
